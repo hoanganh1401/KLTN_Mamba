@@ -1,0 +1,34 @@
+{"location_key": "ha_noi", "name": "TP. Hà Nội", "latitude": 21.0285, "longitude": 105.8542, "timezone": "Asia/Bangkok"}
+{"location_key": "ho_chi_minh", "name": "TP. Hồ Chí Minh", "latitude": 10.8231, "longitude": 106.6297, "timezone": "Asia/Bangkok"}
+{"location_key": "hai_phong", "name": "TP. Hải Phòng", "latitude": 20.8449, "longitude": 106.6881, "timezone": "Asia/Bangkok"}
+{"location_key": "da_nang", "name": "TP. Đà Nẵng", "latitude": 16.0544, "longitude": 108.2022, "timezone": "Asia/Bangkok"}
+{"location_key": "can_tho", "name": "TP. Cần Thơ", "latitude": 10.0452, "longitude": 105.7469, "timezone": "Asia/Bangkok"}
+{"location_key": "hue", "name": "TP. Huế", "latitude": 16.4637, "longitude": 107.5909, "timezone": "Asia/Bangkok"}
+{"location_key": "tuyen_quang", "name": "Tuyên Quang", "latitude": 21.8156, "longitude": 105.2155, "timezone": "Asia/Bangkok"}
+{"location_key": "lao_cai", "name": "Lào Cai", "latitude": 21.7168, "longitude": 104.8906, "timezone": "Asia/Bangkok"}
+{"location_key": "thai_nguyen", "name": "Thái Nguyên", "latitude": 21.5942, "longitude": 105.8482, "timezone": "Asia/Bangkok"}
+{"location_key": "phu_tho", "name": "Phú Thọ", "latitude": 21.3250, "longitude": 105.3956, "timezone": "Asia/Bangkok"}
+{"location_key": "lai_chau", "name": "Lai Châu", "latitude": 22.3968, "longitude": 103.4630, "timezone": "Asia/Bangkok"}
+{"location_key": "dien_bien", "name": "Điện Biên", "latitude": 21.3853, "longitude": 103.0180, "timezone": "Asia/Bangkok"}
+{"location_key": "son_la", "name": "Sơn La", "latitude": 21.3283, "longitude": 103.9015, "timezone": "Asia/Bangkok"}
+{"location_key": "lang_son", "name": "Lạng Sơn", "latitude": 21.8488, "longitude": 106.7645, "timezone": "Asia/Bangkok"}
+{"location_key": "cao_bang", "name": "Cao Bằng", "latitude": 22.6681, "longitude": 106.2628, "timezone": "Asia/Bangkok"}
+{"location_key": "bac_ninh", "name": "Bắc Ninh", "latitude": 21.2721, "longitude": 106.1950, "timezone": "Asia/Bangkok"}
+{"location_key": "quang_ninh", "name": "Quảng Ninh", "latitude": 20.9505, "longitude": 107.0733, "timezone": "Asia/Bangkok"}
+{"location_key": "hung_yen", "name": "Hưng Yên", "latitude": 20.6465, "longitude": 106.0511, "timezone": "Asia/Bangkok"}
+{"location_key": "ninh_binh", "name": "Ninh Bình", "latitude": 20.2539, "longitude": 105.9749, "timezone": "Asia/Bangkok"}
+{"location_key": "thanh_hoa", "name": "Thanh Hóa", "latitude": 19.8058, "longitude": 105.7758, "timezone": "Asia/Bangkok"}
+{"location_key": "nghe_an", "name": "Nghệ An", "latitude": 18.6738, "longitude": 105.6813, "timezone": "Asia/Bangkok"}
+{"location_key": "ha_tinh", "name": "Hà Tĩnh", "latitude": 18.3364, "longitude": 105.8943, "timezone": "Asia/Bangkok"}
+{"location_key": "quang_tri", "name": "Quảng Trị", "latitude": 17.4727, "longitude": 106.5979, "timezone": "Asia/Bangkok"}
+{"location_key": "quang_ngai", "name": "Quảng Ngãi", "latitude": 15.1189, "longitude": 108.7950, "timezone": "Asia/Bangkok"}
+{"location_key": "gia_lai", "name": "Gia Lai", "latitude": 13.7745, "longitude": 109.2201, "timezone": "Asia/Bangkok"}
+{"location_key": "dak_lak", "name": "Đắk Lắk", "latitude": 12.6667, "longitude": 108.0382, "timezone": "Asia/Bangkok"}
+{"location_key": "khanh_hoa", "name": "Khánh Hòa", "latitude": 12.2458, "longitude": 109.1943, "timezone": "Asia/Bangkok"}
+{"location_key": "lam_dong", "name": "Lâm Đồng", "latitude": 11.9404, "longitude": 108.4583, "timezone": "Asia/Bangkok"}
+{"location_key": "tay_ninh", "name": "Tây Ninh", "latitude": 10.5360, "longitude": 106.4055, "timezone": "Asia/Bangkok"}
+{"location_key": "dong_nai", "name": "Đồng Nai", "latitude": 10.9457, "longitude": 106.8242, "timezone": "Asia/Bangkok"}
+{"location_key": "vinh_long", "name": "Vĩnh Long", "latitude": 10.2525, "longitude": 105.9719, "timezone": "Asia/Bangkok"}
+{"location_key": "dong_thap", "name": "Đồng Tháp", "latitude": 10.3601, "longitude": 106.3578, "timezone": "Asia/Bangkok"}
+{"location_key": "an_giang", "name": "An Giang", "latitude": 10.0104, "longitude": 105.0809, "timezone": "Asia/Bangkok"}
+{"location_key": "ca_mau", "name": "Cà Mau", "latitude": 9.1769, "longitude": 105.1500, "timezone": "Asia/Bangkok"}
