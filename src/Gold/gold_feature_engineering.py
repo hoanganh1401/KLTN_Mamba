@@ -18,8 +18,8 @@ import numpy as np
 import pandas as pd
 from minio import Minio
 
-from config import MINIO_GOLD_BUCKET, load_processing_config
-from minio_io import (
+from common.config import MINIO_GOLD_BUCKET, load_processing_config
+from common.minio_io import (
     get_client,
     gold_feature_path,
     load_silver_processed,
