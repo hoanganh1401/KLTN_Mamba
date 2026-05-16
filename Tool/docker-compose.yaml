@@ -89,6 +89,10 @@ x-airflow-common:
     - ../Airflow/dags:/opt/Project/Airflow/dags
     - ../Airflow/config:/opt/Project/Airflow/config
     - ../DataSet:/opt/Project/Dataset
+    - ../src/Silver:/opt/Project/src/Silver
+    - ../src/Gold:/opt/Project/src/Gold
+    - ../src/Model:/opt/Project/src/Model
+    - ../src/Inference:/opt/Project/src/Inference
     # mount project requirements so Airflow can pip install them at startup
     - ./requirements.txt:/opt/Tool/requirements.txt:ro
   user: "${AIRFLOW_UID:-50000}:0"

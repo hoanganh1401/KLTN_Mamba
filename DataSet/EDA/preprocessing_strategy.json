@@ -1,0 +1,50 @@
+{
+  "1_missing_imputation": {
+    "max_interpolate_gap_h": 3,
+    "max_ffill_gap_h": 6,
+    "invalid_segment_gap_h": 6,
+    "rule": "Interpolate nếu gap <= 3h, ffill nếu gap <= 6h",
+    "fallback": "Gap > 6h → đánh dấu _invalid_segment, không dùng train",
+    "why": "Mamba không tolerant với NaN — cần chuỗi liên tục",
+    "derived_from": "median_max_gap=0.0h, p75_gap=0.0h"
+  },
+  "2_outlier_handling": {
+    "rule": "Clip về physical bounds, flag row nhưng KHÔNG remove",
+    "physical_violations_found": [],
+    "why": "Spike ô nhiễm thật là signal quan trọng cho forecasting"
+  },
+  "3_normalization": {
+    "method": "standard",
+    "rule": "StandardScaler per-location per-column",
+    "why": "skewness=0.70 ≈ 0 → StandardScaler đủ tốt",
+    "important": "Normalize riêng từng tỉnh vì AQI chênh nhau 90.9 units giữa các tỉnh",
+    "derived_from": "skewness=0.701"
+  },
+  "4_time_features": {
+    "features": [
+      "hour_sin",
+      "hour_cos",
+      "month_sin",
+      "month_cos",
+      "day_of_week",
+      "is_weekend"
+    ],
+    "why": "Mamba cần explicit time features — không có positional encoding như Transformer",
+    "daily_peak_hours": [
+      11,
+      12
+    ],
+    "peak_month": 4
+  },
+  "5_sequence_preparation": {
+    "context_window_h": 168,
+    "forecast_horizon_h": 24,
+    "stride_h": 1,
+    "why": "Window 168h đủ học daily + weekly seasonality (daily_amp=10.5 AQI units)",
+    "derived_from": "daily_amplitude=10.5"
+  },
+  "6_train_test_split": {
+    "rule": "Temporal split: train đến tháng N-1, test tháng N",
+    "important": "KHÔNG dùng random split — data là time series!"
+  }
+}

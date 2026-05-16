@@ -321,11 +321,40 @@ def save_to_minio(
 # =============================
 # 4) Gap Detection
 # =============================
+def get_last_stored_hour(
+    client: Minio,
+    location_key: str,
+    target_date: "datetime.date",
+) -> "Optional[pd.Timestamp]":
+    """
+    Đọc file CSV của một ngày cụ thể và trả về timestamp cuối cùng đã lưu.
+    Trả về None nếu file chưa tồn tại.
+
+    Dùng để phát hiện ngày bị lưu thiếu giờ (ví dụ: tắt máy lúc 17:00,
+    file có nhưng chỉ có đến 17:00 thay vì 23:00).
+    """
+    path = object_path(location_key, target_date.year,
+                       target_date.month, target_date.day)
+    try:
+        resp = client.get_object(MINIO_BUCKET, path)
+        try:
+            raw = resp.read()
+        finally:
+            resp.close(); resp.release_conn()
+
+        df = pd.read_csv(io.BytesIO(raw), usecols=["time"])
+        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df = df.dropna(subset=["time"])
+        return df["time"].max() if not df.empty else None
+    except Exception:
+        return None   # file chưa tồn tại
+
+
 def get_stored_dates(client: Minio, location_key: str) -> set:
     """
-    Scan MinIO prefix for a location and return the set of dates (datetime.date)
-    that already have a data.csv stored.
-    Path pattern: air_quality/province={key}/year={Y}/month={MM}/day={DD}/data.csv
+    Scan MinIO prefix và trả về set các date đã có file data.csv.
+    Chỉ dùng để detect ngày HOÀN TOÀN thiếu (không có file).
+    Ngày có file nhưng thiếu giờ được xử lý riêng bởi get_last_stored_hour().
     """
     prefix = f"air_quality/province={location_key}/"
     stored: set = set()
@@ -347,22 +376,57 @@ def get_stored_dates(client: Minio, location_key: str) -> set:
     return stored
 
 
-def find_missing_dates(
+def find_gaps(
     client: Minio,
     location_key: str,
     lookback_days: int = 30,
-) -> list:
+) -> tuple[list, list[tuple]]:
     """
-    Return sorted list of missing dates in [today - lookback_days, yesterday].
-    Today is excluded because it is handled by the normal incremental fetch.
+    Phát hiện 2 loại gap:
+
+    1. missing_dates  : ngày hoàn toàn không có file
+                        → fetch toàn bộ ngày đó (incremental=False)
+
+    2. partial_dates  : ngày có file nhưng thiếu giờ cuối
+                        (ví dụ: tắt máy lúc 17:00, thiếu 17:00-23:00)
+                        → fetch lại từ giờ cuối đã lưu đến cuối ngày
+                        → trả về list[(date, last_hour_stored)]
+
+    Returns: (missing_dates, partial_dates)
     """
-    today     = datetime.utcnow().date()
+    now_utc   = datetime.utcnow()
+    today     = now_utc.date()
     yesterday = today - timedelta(days=1)
     start     = today - timedelta(days=lookback_days)
 
-    expected = {start + timedelta(days=i) for i in range((yesterday - start).days + 1)}
-    stored   = get_stored_dates(client, location_key)
-    return sorted(expected - stored)
+    stored_dates  = get_stored_dates(client, location_key)
+    missing_dates = sorted(
+        {start + timedelta(days=i) for i in range((yesterday - start).days + 1)}
+        - stored_dates
+    )
+
+    # Kiểm tra ngày có file nhưng thiếu giờ:
+    # - Với ngày trong quá khứ (< today): kỳ vọng đủ 24 giờ (0:00-23:00)
+    # - Với yesterday: kỳ vọng đủ đến 23:00 UTC
+    partial_dates: list[tuple] = []
+    for d in stored_dates:
+        if d < start or d > yesterday:
+            continue
+
+        last_ts = get_last_stored_hour(client, location_key, d)
+        if last_ts is None:
+            continue
+
+        # Giờ cuối kỳ vọng của ngày đó
+        expected_last = pd.Timestamp(
+            year=d.year, month=d.month, day=d.day,
+            hour=23, tz="UTC"
+        )
+        # Nếu giờ cuối được lưu < 23:00 → thiếu giờ
+        if last_ts < expected_last:
+            partial_dates.append((d, last_ts))
+
+    return missing_dates, partial_dates
 
 
 def _fetch_and_save(
@@ -427,8 +491,11 @@ def run_incremental(
 ) -> None:
     """
     For each location:
-      1. Detect missing days in the last `lookback_days` window → gap-fill them.
-      2. Fetch today's data normally.
+      1a. Detect ngày HOÀN TOÀN thiếu  → fetch toàn bộ ngày đó.
+      1b. Detect ngày có file nhưng THIẾU GIỜ cuối
+          (vd: tắt máy lúc 17:00 → thiếu 17:00-23:00)
+          → fetch lại từ giờ cuối đã lưu đến hết ngày.
+      2.  Fetch today bình thường.
     """
     client  = get_minio_client()
     session = build_http_session()
@@ -440,26 +507,47 @@ def run_incremental(
 
         print(f"\n==> Incremental: {loc_name} ({loc_key})  date={today}")
 
-        # ── Step 1: Gap detection & auto backfill ──────────────────────────
-        missing = find_missing_dates(client, loc_key, lookback_days=lookback_days)
+        # ── Step 1a: Ngày hoàn toàn thiếu ─────────────────────────────────
+        missing_dates, partial_dates = find_gaps(
+            client, loc_key, lookback_days=lookback_days
+        )
 
-        if missing:
-            print(f"  🔍 Found {len(missing)} missing day(s): "
-                  f"{missing[0]} … {missing[-1]}")
-
-            # Batch consecutive missing days into chunks to minimise API calls
+        if missing_dates:
+            print(f"  🔍 Found {len(missing_dates)} fully missing day(s): "
+                  f"{missing_dates[0]} … {missing_dates[-1]}")
             for s, e in generate_date_chunks(
-                missing[0].strftime("%Y-%m-%d"),
-                missing[-1].strftime("%Y-%m-%d"),
+                missing_dates[0].strftime("%Y-%m-%d"),
+                missing_dates[-1].strftime("%Y-%m-%d"),
                 days=90,
             ):
-                print(f"  ↩️  Gap-fill {s} → {e} …")
+                print(f"  ↩️  Gap-fill (full day) {s} → {e} …")
                 ok = _fetch_and_save(session, client, loc, s, e, incremental=False)
                 if not ok:
                     print("  Stopping gap-fill due to rate limit.")
                     break
         else:
-            print("  ✔ No gaps found in the lookback window.")
+            print("  ✔ No fully missing days in the lookback window.")
+
+        # ── Step 1b: Ngày có file nhưng thiếu giờ cuối ────────────────────
+        if partial_dates:
+            print(f"  🕐 Found {len(partial_dates)} partial day(s) with missing hours:")
+            for partial_date, last_ts in partial_dates:
+                # Fetch lại nguyên ngày đó với incremental=True
+                # → save_to_minio sẽ chỉ append các giờ mới hơn last_ts
+                date_str = partial_date.strftime("%Y-%m-%d")
+                print(f"  ↩️  Refetch partial {date_str} "
+                      f"(stored until {last_ts.strftime('%H:%M' )} UTC) …")
+                ok = _fetch_and_save(
+                    session, client, loc,
+                    start_date=date_str,
+                    end_date=date_str,
+                    incremental=True,   # chỉ append giờ mới hơn last_ts
+                )
+                if not ok:
+                    print("  Stopping partial-fill due to rate limit.")
+                    break
+        else:
+            print("  ✔ No partial days detected.")
 
         # ── Step 2: Fetch today ────────────────────────────────────────────
         print(f"  Fetching today ({today}) …")

@@ -1,0 +1,26 @@
+# Data Processing
+pandas
+numpy
+scipy
+
+# Visualization
+matplotlib
+seaborn
+plotly
+
+# Excel
+openpyxl
+
+# Machine Learning
+scikit-learn
+
+# Storage / API
+minio
+requests
+python-dotenv
+
+# Web App
+streamlit
+
+# Workflow
+apache-airflow

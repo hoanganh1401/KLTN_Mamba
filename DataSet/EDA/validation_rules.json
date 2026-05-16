@@ -1,0 +1,80 @@
+{
+  "missing_rate_threshold": 0.0,
+  "physical_bounds": {
+    "pm25": [
+      0,
+      1000
+    ],
+    "pm10": [
+      0,
+      2000
+    ],
+    "no2": [
+      0,
+      1000
+    ],
+    "o3": [
+      0,
+      500
+    ],
+    "so2": [
+      0,
+      1000
+    ],
+    "co": [
+      0,
+      50000
+    ],
+    "aod": [
+      0,
+      5
+    ],
+    "dust": [
+      0,
+      2000
+    ],
+    "uv_index": [
+      0,
+      20
+    ],
+    "co2": [
+      300,
+      5000
+    ],
+    "aqi": [
+      0,
+      500
+    ]
+  },
+  "max_interpolation_gap_hours": 3,
+  "max_forward_fill_gap_hours": 6,
+  "min_coverage_pct": 100.0,
+  "aqi_valid_range": [
+    0,
+    500
+  ],
+  "required_columns": [
+    "time",
+    "location",
+    "latitude",
+    "longitude",
+    "pm25",
+    "pm10",
+    "no2",
+    "o3",
+    "so2",
+    "co",
+    "aod",
+    "dust",
+    "uv_index",
+    "co2",
+    "aqi"
+  ],
+  "duplicate_strategy": "drop, keep=last",
+  "derived_from_eda": {
+    "missing_thr_basis": "median_missing_rate=0.0% × 1.5, cap 30%",
+    "coverage_thr_basis": "p10 coverage=100.0%, floor 80%",
+    "gap_basis": "median_max_gap=0.0h, p75_gap=0.0h",
+    "aqi_range_basis": "EPA standard physical sensor limits"
+  }
+}
