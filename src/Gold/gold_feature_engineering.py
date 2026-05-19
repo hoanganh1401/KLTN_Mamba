@@ -28,15 +28,15 @@ from common.minio_io import (
 )
 
 
-def step_time_features(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+def step_time_features(df: pd.DataFrame, features: list[str], time_col: str) -> pd.DataFrame:
     """
     Thêm cyclic time features theo danh sách được chỉ định từ EDA config.
     Supported: hour_sin, hour_cos, month_sin, month_cos, day_of_week, is_weekend
     """
-    if "time" not in df.columns:
-        raise ValueError("Missing required column: time")
+    if time_col not in df.columns:
+        raise ValueError(f"Missing required column: {time_col}")
 
-    t = pd.to_datetime(df["time"], utc=True, errors="coerce")
+    t = pd.to_datetime(df[time_col], utc=True, errors="coerce")
     hour = t.dt.hour
     month = t.dt.month
 
@@ -50,7 +50,7 @@ def step_time_features(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     }
 
     df = df.copy()
-    df["time"] = t
+    df[time_col] = t
     for feat in features:
         if feat in feature_map:
             df[feat] = feature_map[feat]()
@@ -60,9 +60,15 @@ def step_time_features(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     return df
 
 
-def step_reorder_gold_features(df: pd.DataFrame, metric_cols: list[str], time_features: list[str]) -> pd.DataFrame:
+def step_reorder_gold_features(
+    df: pd.DataFrame,
+    metric_cols: list[str],
+    time_features: list[str],
+    time_col: str,
+    location_col: str,
+) -> pd.DataFrame:
     """Sắp xếp cột cho Gold features: identity → metrics → time features → flags → other."""
-    identity = ["time", "location", "latitude", "longitude"]
+    identity = [time_col, location_col, "latitude", "longitude"]
     metrics = [c for c in metric_cols if c in df.columns]
     time_feat = [c for c in time_features if c in df.columns]
     flags = sorted([c for c in df.columns if c.startswith("_")])
@@ -86,10 +92,16 @@ def process_day(client: Minio, location_key: str, target_date: date, cfg: dict) 
 
     log["rows_input"] = len(df)
 
-    df = step_time_features(df, cfg["time_features"])
+    df = step_time_features(df, cfg["time_features"], cfg["time_col"])
     log["step_time_features"] = cfg["time_features"]
 
-    df = step_reorder_gold_features(df, cfg["metric_cols"], cfg["time_features"])
+    df = step_reorder_gold_features(
+        df,
+        cfg["metric_cols"],
+        cfg["time_features"],
+        cfg["time_col"],
+        cfg["location_col"],
+    )
 
     log["rows_output"] = len(df)
     log["status"] = "OK"

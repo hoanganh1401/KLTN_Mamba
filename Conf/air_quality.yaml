@@ -1,0 +1,68 @@
+project:
+	name: air_quality_forecasting
+	target: aqi
+	primary_model: mamba
+
+data:
+	freq: h
+	time_col: time
+	location_col: location
+	target_col: aqi
+	metric_cols:
+		- pm25
+		- pm10
+		- no2
+		- o3
+		- so2
+		- co
+		- aod
+		- dust
+		- uv_index
+		- co2
+		- aqi
+
+features:
+	time_features:
+		- hour_sin
+		- hour_cos
+		- month_sin
+		- month_cos
+		- day_of_week
+		- is_weekend
+
+dataset:
+	seq_len: 96
+	pred_len: 12
+	train_ratio: 0.7
+	val_ratio: 0.1
+	test_ratio: 0.2
+	include_target_history: true
+
+scaling:
+	method: standard
+	fit_on: train_only
+
+model:
+	name: mamba
+	input_dim: null
+	output_dim: 1
+	d_model: 64
+	n_layers: 2
+	dropout: 0.0
+
+training:
+	batch_size: 128
+	learning_rate: 0.001
+	epochs: 10
+	patience: 5
+	device: cuda
+
+inference:
+	horizon_hours: 12
+	use_latest_hours: 96
+
+minio:
+	bronze_bucket: air-quality
+	silver_bucket: air-quality-silver
+	gold_bucket: air-quality-gold
+	artifacts_bucket: air-quality-artifacts

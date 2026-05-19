@@ -38,11 +38,11 @@ from common.minio_io import (
 # =============================
 # Silver Processing Steps
 # =============================
-def step_dedup(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+def step_dedup(df: pd.DataFrame, time_col: str, location_col: str) -> tuple[pd.DataFrame, int]:
     """Remove duplicate (time, location), keep last."""
     n_before = len(df)
-    df = df.drop_duplicates(subset=["time", "location"], keep="last")
-    df = df.sort_values("time").reset_index(drop=True)
+    df = df.drop_duplicates(subset=[time_col, location_col], keep="last")
+    df = df.sort_values(time_col).reset_index(drop=True)
     return df, n_before - len(df)
 
 
@@ -56,9 +56,12 @@ def step_clip(df: pd.DataFrame, physical_bounds: dict[str, tuple[float, float]])
 
 def step_impute(
     df: pd.DataFrame,
+    time_col: str,
+    location_col: str,
     metric_cols: list[str],
     max_interpolate_gap_h: int,
     max_ffill_gap_h: int,
+    target_col: str,
 ) -> tuple[pd.DataFrame, dict]:
     """
     - Reindex thành chuỗi hourly liên tục trong khoảng [min_time, max_time]
@@ -67,10 +70,10 @@ def step_impute(
     - Đánh dấu _imputed=True cho các row được tạo thêm bởi reindex
     - Đánh dấu _invalid_segment=True cho các row nằm trong gap > max_ffill_gap_h
     """
-    if df.empty or df["time"].isna().all():
+    if df.empty or df[time_col].isna().all():
         return df, {}
 
-    df = df.set_index("time")
+    df = df.set_index(time_col)
 
     full_idx = pd.date_range(
         start=df.index.min().floor("h"),
@@ -79,14 +82,14 @@ def step_impute(
         tz="UTC",
     )
     df = df.reindex(full_idx)
-    df["_imputed"] = df["location"].isna()
+    df["_imputed"] = df[location_col].isna()
 
-    for col in ["location", "latitude", "longitude"]:
+    for col in [location_col, "latitude", "longitude"]:
         if col in df.columns:
             df[col] = df[col].ffill().bfill()
 
     df["_invalid_segment"] = False
-    missing_mask = df["aqi"].isna() if "aqi" in df.columns else pd.Series(False, index=df.index)
+    missing_mask = df[target_col].isna() if target_col in df.columns else pd.Series(False, index=df.index)
 
     if missing_mask.any():
         run_id = (missing_mask != missing_mask.shift()).cumsum()
@@ -115,16 +118,16 @@ def step_impute(
     stats = {
         "rows_added_by_reindex": int(df["_imputed"].sum()),
         "invalid_segment_rows": int(df["_invalid_segment"].sum()),
-        "remaining_null_aqi": int(df["aqi"].isna().sum()) if "aqi" in df.columns else -1,
+        "remaining_null_target": int(df[target_col].isna().sum()) if target_col in df.columns else -1,
     }
 
-    df = df.reset_index().rename(columns={"index": "time"})
+    df = df.reset_index().rename(columns={"index": time_col})
     return df, stats
 
 
-def step_reorder_silver(df: pd.DataFrame, metric_cols: list[str]) -> pd.DataFrame:
+def step_reorder_silver(df: pd.DataFrame, metric_cols: list[str], time_col: str, location_col: str) -> pd.DataFrame:
     """Sắp xếp lại cột cho Silver: identity → metrics → flags → other."""
-    identity = ["time", "location", "latitude", "longitude"]
+    identity = [time_col, location_col, "latitude", "longitude"]
     metrics = [c for c in metric_cols if c in df.columns]
     flags = sorted([c for c in df.columns if c.startswith("_")])
     other = [c for c in df.columns if c not in identity + metrics + flags]
@@ -155,7 +158,7 @@ def process_day(
 
     log["rows_input"] = len(df)
 
-    df, n_dup = step_dedup(df)
+    df, n_dup = step_dedup(df, cfg["time_col"], cfg["location_col"])
     log["step1_dedup_removed"] = n_dup
 
     df = step_clip(df, cfg["physical_bounds"])
@@ -163,13 +166,16 @@ def process_day(
 
     df, impute_stats = step_impute(
         df,
+        time_col=cfg["time_col"],
+        location_col=cfg["location_col"],
         metric_cols=cfg["metric_cols"],
         max_interpolate_gap_h=cfg["max_interpolate_gap_h"],
         max_ffill_gap_h=cfg["max_ffill_gap_h"],
+        target_col=cfg["target_col"],
     )
     log["step3_impute"] = impute_stats
 
-    df = step_reorder_silver(df, cfg["metric_cols"])
+    df = step_reorder_silver(df, cfg["metric_cols"], cfg["time_col"], cfg["location_col"])
 
     log["rows_output"] = len(df)
     log["status"] = "OK"

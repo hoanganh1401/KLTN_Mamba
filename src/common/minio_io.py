@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Any
+from typing import Any, Iterable
 
 import pandas as pd
 from minio import Minio
 
-from config import (
+from common.config import (
     MINIO_ACCESS,
     MINIO_GOLD_BUCKET,
     MINIO_HOST,
@@ -109,6 +109,30 @@ def upload_json(client: Minio, bucket: str, path: str, obj: dict[str, Any]) -> N
         length=len(j_bytes),
         content_type="application/json",
     )
+
+
+def upload_bytes(client: Minio, bucket: str, path: str, payload: bytes, content_type: str = "application/octet-stream") -> None:
+    client.put_object(
+        bucket,
+        path,
+        data=io.BytesIO(payload),
+        length=len(payload),
+        content_type=content_type,
+    )
+
+
+def download_bytes(client: Minio, bucket: str, path: str) -> bytes:
+    resp = client.get_object(bucket, path)
+    try:
+        return resp.read()
+    finally:
+        resp.close()
+        resp.release_conn()
+
+
+def list_objects(client: Minio, bucket: str, prefix: str) -> Iterable[str]:
+    for obj in client.list_objects(bucket, prefix=prefix, recursive=True):
+        yield obj.object_name
 
 
 def load_silver_validated(client: Minio, location_key: str, year: int, month: int, day: int) -> pd.DataFrame | None:

@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
+
+import yaml
 from minio import Minio
 
 
@@ -59,6 +62,76 @@ _DEFAULT_TIME_FEATURES = [
     "hour_sin", "hour_cos", "month_sin", "month_cos", "day_of_week", "is_weekend"
 ]
 
+_DEFAULT_DATA_CONFIG = {
+    "freq": "h",
+    "time_col": "time",
+    "location_col": "location",
+    "target_col": "aqi",
+    "metric_cols": _DEFAULT_METRIC_COLS,
+}
+
+_DEFAULT_FEATURES_CONFIG = {
+    "time_features": _DEFAULT_TIME_FEATURES,
+}
+
+_DEFAULT_DATASET_CONFIG = {
+    "seq_len": 96,
+    "pred_len": 12,
+    "train_ratio": 0.7,
+    "val_ratio": 0.1,
+    "test_ratio": 0.2,
+    "include_target_history": True,
+}
+
+_DEFAULT_SCALING_CONFIG = {
+    "method": "standard",
+    "fit_on": "train_only",
+}
+
+
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def load_project_config(path: str | None = None) -> dict:
+    """Load project config from Conf/air_quality.yaml.
+
+    Returns a dict with normalized keys for data/features/dataset/scaling.
+    """
+    if path is None:
+        path = os.environ.get("AIR_QUALITY_CONFIG", "Conf/air_quality.yaml")
+    cfg_path = Path(path)
+    if not cfg_path.is_absolute():
+        cfg_path = _project_root() / cfg_path
+
+    if not cfg_path.exists():
+        return {
+            "data": _DEFAULT_DATA_CONFIG,
+            "features": _DEFAULT_FEATURES_CONFIG,
+            "dataset": _DEFAULT_DATASET_CONFIG,
+            "scaling": _DEFAULT_SCALING_CONFIG,
+        }
+
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    data_cfg = {**_DEFAULT_DATA_CONFIG, **(raw.get("data") or {})}
+    features_cfg = {**_DEFAULT_FEATURES_CONFIG, **(raw.get("features") or {})}
+    dataset_cfg = {**_DEFAULT_DATASET_CONFIG, **(raw.get("dataset") or {})}
+    scaling_cfg = {**_DEFAULT_SCALING_CONFIG, **(raw.get("scaling") or {})}
+
+    return {
+        "project": raw.get("project", {}),
+        "data": data_cfg,
+        "features": features_cfg,
+        "dataset": dataset_cfg,
+        "scaling": scaling_cfg,
+        "minio": raw.get("minio", {}),
+        "model": raw.get("model", {}),
+        "training": raw.get("training", {}),
+        "inference": raw.get("inference", {}),
+    }
+
 
 def load_processing_config(client: Minio) -> dict:
     """
@@ -78,6 +151,20 @@ def load_processing_config(client: Minio) -> dict:
     - Training preprocessing dùng: normalization_method.
     """
     config: dict = {}
+    proj_cfg = load_project_config()
+
+    data_cfg = proj_cfg.get("data", {})
+    features_cfg = proj_cfg.get("features", {})
+    dataset_cfg = proj_cfg.get("dataset", {})
+    scaling_cfg = proj_cfg.get("scaling", {})
+
+    config["time_col"] = data_cfg.get("time_col", "time")
+    config["location_col"] = data_cfg.get("location_col", "location")
+    config["target_col"] = data_cfg.get("target_col", "aqi")
+    config["metric_cols"] = data_cfg.get("metric_cols", _DEFAULT_METRIC_COLS)
+    config["time_features"] = features_cfg.get("time_features", _DEFAULT_TIME_FEATURES)
+    config["normalization_method"] = scaling_cfg.get("method", "standard")
+    config["dataset"] = dataset_cfg
 
     # Load validation_rules.json từ MinIO
     try:
@@ -104,9 +191,9 @@ def load_processing_config(client: Minio) -> dict:
         if "max_forward_fill_gap_hours" in vrules:
             config["max_ffill_gap_h"] = int(vrules["max_forward_fill_gap_hours"])
 
-        print(f"✅ Loaded validation_rules from MinIO: {EDA_RULES_OBJECT}")
+        print(f"OK: Loaded validation_rules from MinIO: {EDA_RULES_OBJECT}")
     except Exception as exc:
-        print(f"⚠️  validation_rules.json not found on MinIO: {exc} — using defaults")
+        print(f"WARN: validation_rules.json not found on MinIO: {exc} — using defaults")
 
     # Load preprocessing_strategy.json từ MinIO
     try:
@@ -133,24 +220,40 @@ def load_processing_config(client: Minio) -> dict:
         if tf_list:
             config["time_features"] = tf_list
 
-        print(f"✅ Loaded preprocessing_strategy from MinIO: {EDA_STRATEGY_OBJECT}")
+        print(f"OK: Loaded preprocessing_strategy from MinIO: {EDA_STRATEGY_OBJECT}")
     except Exception as exc:
-        print(f"⚠️  preprocessing_strategy.json not found on MinIO: {exc} — using defaults")
+        print(f"WARN: preprocessing_strategy.json not found on MinIO: {exc} — using defaults")
 
     config.setdefault("metric_cols", _DEFAULT_METRIC_COLS)
     config.setdefault("physical_bounds", _DEFAULT_PHYSICAL_BOUNDS)
     config.setdefault("max_interpolate_gap_h", _DEFAULT_MAX_INTERPOLATE_GAP_H)
     config.setdefault("max_ffill_gap_h", _DEFAULT_MAX_FFILL_GAP_H)
-    config.setdefault("normalization_method", "robust")
+    config.setdefault("normalization_method", "standard")
     config.setdefault("time_features", _DEFAULT_TIME_FEATURES)
 
     print(
-        f"\n📋 Active config:"
-        f"\n   metric_cols          : {config['metric_cols']}"
-        f"\n   max_interpolate_gap_h: {config['max_interpolate_gap_h']}h"
-        f"\n   max_ffill_gap_h      : {config['max_ffill_gap_h']}h"
-        f"\n   normalization_method : {config['normalization_method']}"
-        f"\n   time_features        : {config['time_features']}\n"
+        "\nActive config:"
+        f"\n  time_col             : {config['time_col']}"
+        f"\n  location_col         : {config['location_col']}"
+        f"\n  target_col           : {config['target_col']}"
+        f"\n  metric_cols          : {config['metric_cols']}"
+        f"\n  max_interpolate_gap_h: {config['max_interpolate_gap_h']}h"
+        f"\n  max_ffill_gap_h      : {config['max_ffill_gap_h']}h"
+        f"\n  normalization_method : {config['normalization_method']}"
+        f"\n  time_features        : {config['time_features']}\n"
     )
 
     return config
+
+
+def _apply_yaml_minio_overrides() -> None:
+    cfg = load_project_config()
+    minio_cfg = cfg.get("minio", {})
+    global MINIO_SILVER_BUCKET, MINIO_GOLD_BUCKET
+    if minio_cfg.get("silver_bucket"):
+        MINIO_SILVER_BUCKET = str(minio_cfg["silver_bucket"])
+    if minio_cfg.get("gold_bucket"):
+        MINIO_GOLD_BUCKET = str(minio_cfg["gold_bucket"])
+
+
+_apply_yaml_minio_overrides()
