@@ -22,7 +22,9 @@ import csv
 import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -374,9 +376,31 @@ def load_prepared_dataset_from_minio(dataset_prefix: str) -> tuple[SplitData, Sp
     return train, val, test, metadata
 
 
-def upload_training_outputs_to_minio(out_dir: str, run_id: str, dataset_prefix: str, logger) -> None:
+def _resolve_single_province(metadata: dict | None) -> str | None:
+    if not metadata:
+        return None
+    locations = metadata.get("locations")
+    if isinstance(locations, list) and len(locations) == 1:
+        return str(locations[0])
+    location_to_id = metadata.get("location_to_id")
+    if isinstance(location_to_id, dict) and len(location_to_id) == 1:
+        return str(next(iter(location_to_id.keys())))
+    return None
+
+
+def upload_training_outputs_to_minio(
+    out_dir: str,
+    run_id: str,
+    dataset_prefix: str,
+    logger,
+    dataset_metadata: dict | None = None,
+) -> None:
     client = get_client()
-    prefix = f"mamba/run_id={run_id}"
+    province = _resolve_single_province(dataset_metadata)
+    if province:
+        prefix = f"mamba/province={province}/run_id={run_id}"
+    else:
+        prefix = f"mamba/run_id={run_id}"
     files = {
         "best_mamba_aqi.pt": "application/octet-stream",
         "metrics_history.csv": "text/csv",
@@ -395,12 +419,24 @@ def upload_training_outputs_to_minio(out_dir: str, run_id: str, dataset_prefix: 
             content_type=content_type,
         )
 
+    best_model_path = Path(out_dir) / "best_mamba_aqi.pt"
+    if best_model_path.exists():
+        upload_bytes(
+            client,
+            MINIO_ARTIFACTS_BUCKET,
+            f"{prefix}/best_model.pt",
+            best_model_path.read_bytes(),
+            content_type="application/octet-stream",
+        )
+
     upload_json(
         client,
         MINIO_ARTIFACTS_BUCKET,
         f"{prefix}/artifact_manifest.json",
         {
             "run_id": run_id,
+            "province": province,
+            "scope": "single_province" if province else "multi_province",
             "dataset_prefix": dataset_prefix,
             "artifact_prefix": prefix,
             "bucket": MINIO_ARTIFACTS_BUCKET,
@@ -629,6 +665,8 @@ def main() -> None:
     parser.add_argument("--seed",             type=int,   default=42)
     parser.add_argument("--num-workers",      type=int,   default=0)
     parser.add_argument("--out-dir",          type=str,   default=None)
+    parser.add_argument("--model-run-id",     type=str,   default=None, help="Artifact run id on MinIO; default is inferred from --run-id")
+    parser.add_argument("--keep-local",       action="store_true", help="Keep temporary local artifacts after uploading to MinIO")
     parser.add_argument("--device",           type=str,   default="cuda", choices=["cuda", "cpu", "auto"])
     parser.add_argument("--location",         type=str,   default=None,   help="[Deprecated] Dùng --locations thay thế")
     parser.add_argument("--locations",        type=str,   default=None,   help="Comma-separated location_key list")
@@ -673,14 +711,26 @@ def main() -> None:
             "Chi truyen --data-path khi can debug local."
         )
 
-    if args.out_dir is None:
+    cleanup_out_dir = False
+    if args.model_run_id:
+        train_run_id = args.model_run_id
+    elif args.run_id and args.run_id.startswith("gold_train_"):
+        train_run_id = "mamba_" + args.run_id.removeprefix("gold_train_")
+    else:
         train_run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir = (project_root / "runs" / train_run_id).resolve()
+
+    if args.out_dir is None:
+        if args.dataset_prefix:
+            out_dir = Path(tempfile.mkdtemp(prefix=f"{train_run_id}_mamba_")).resolve()
+            cleanup_out_dir = not args.keep_local
+        else:
+            out_dir = (project_root / "runs" / train_run_id).resolve()
     else:
         out_dir = Path(args.out_dir)
         if not out_dir.is_absolute():
             out_dir = (project_root / out_dir).resolve()
-        train_run_id = out_dir.name
+        if not args.model_run_id:
+            train_run_id = out_dir.name
     args.out_dir = str(out_dir)
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -851,6 +901,8 @@ def main() -> None:
     training_metadata = {
         "train_run_id": train_run_id,
         "dataset_prefix": args.dataset_prefix,
+        "province": _resolve_single_province(dataset_meta if args.dataset_prefix else None),
+        "scope": "single_province" if _resolve_single_province(dataset_meta if args.dataset_prefix else None) else "multi_province",
         "target_col": args.target_col,
         "feature_cols": feature_cols,
         "window_size": args.window_size,
@@ -883,7 +935,7 @@ def main() -> None:
     metadata_path.write_text(json.dumps(training_metadata, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
     if args.dataset_prefix:
-        upload_training_outputs_to_minio(args.out_dir, train_run_id, args.dataset_prefix, logger)
+        upload_training_outputs_to_minio(args.out_dir, train_run_id, args.dataset_prefix, logger, dataset_meta)
         if args.forecast_24h and df is None:
             raise ValueError("Forecast 24h is handled by src/Inference after training from prepared MinIO arrays.")
 
@@ -1014,6 +1066,14 @@ def main() -> None:
         logger.info("Forecast saved: %s", forecast_out)
     logger.info("Best model: %s", best_path)
     logger.info("History   : %s", history_path)
+    if cleanup_out_dir:
+        tmp_dir = args.out_dir
+        logger.info("MinIO upload finished. Removing temporary local artifacts: %s", tmp_dir)
+        for handler in list(logger.handlers):
+            handler.flush()
+            handler.close()
+            logger.removeHandler(handler)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

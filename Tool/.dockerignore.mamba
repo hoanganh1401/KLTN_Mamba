@@ -1,7 +1,0 @@
-.venv/
-lnx_venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.git/

@@ -274,15 +274,28 @@ Khi tạo sliding window, code group theo tỉnh để đảm bảo chuỗi th�
 
 `loc_ids` chỉ còn để biết sample đó thuộc tỉnh nào khi xuất `test_predictions.csv`, không còn là input của Mamba.
 
-Lệnh chạy:
+Lệnh chạy đúng hiện tại là tạo dataset riêng cho từng tỉnh. Ví dụ với `2026-05-20` đến `2026-05-25`:
 
 ```powershell
-.\.venv\Scripts\python.exe src\Gold\prepare_training_dataset.py `
-  --locations DataSet\locations.jsonl `
-  --config Conf\air_quality.yaml `
-  --start-date 2026-05-20 `
-  --end-date 2026-05-23 `
-  --run-id gold_train_20260523
+$start = "2026-05-20"
+$end = "2026-05-25"
+$tag = "20260525"
+
+$locations = Get-Content DataSet\locations.jsonl | ForEach-Object {
+  (ConvertFrom-Json $_).location_key
+}
+
+foreach ($loc in $locations) {
+  $datasetRun = "gold_train_${loc}_${tag}"
+
+  .\.venv\Scripts\python.exe src\Gold\prepare_training_dataset.py `
+    --locations DataSet\locations.jsonl `
+    --location-keys $loc `
+    --config Conf\air_quality.yaml `
+    --start-date $start `
+    --end-date $end `
+    --run-id $datasetRun
+}
 ```
 
 Output chính:
@@ -329,15 +342,26 @@ s3://air-quality-gold/training_dataset/run_id=<run_id>/
 
 Model không đọc dataset local cũ trong `TS_MAMBA/dataset`.
 
-Lệnh train:
+Lệnh train đúng hiện tại là train từng tỉnh từ dataset riêng. `train_mamba_aqi.py` tự tạo thư mục tạm, train xong upload artifacts lên MinIO, rồi tự xóa local tạm nếu không truyền `--keep-local`.
 
 ```powershell
-.\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
-  --config Conf\air_quality.yaml `
-  --run-id gold_train_20260523 `
-  --out-dir runs\mamba_20260523_y_scaled `
-  --device cuda `
-  --amp
+$tag = "20260525"
+
+$locations = Get-Content DataSet\locations.jsonl | ForEach-Object {
+  (ConvertFrom-Json $_).location_key
+}
+
+foreach ($loc in $locations) {
+  $datasetRun = "gold_train_${loc}_${tag}"
+  $modelRun = "mamba_${loc}_${tag}"
+
+  .\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
+    --config Conf\air_quality.yaml `
+    --run-id $datasetRun `
+    --model-run-id $modelRun `
+    --device cuda `
+    --amp
+}
 ```
 
 Trong train:
@@ -349,19 +373,21 @@ Trong train:
 - Test dùng `X_test/y_test`.
 - Target được normalize bằng thống kê của train split, rồi denormalize khi tính metrics.
 
-Output local:
+Output MinIO mỗi tỉnh:
 
 ```text
-runs\mamba_20260523_y_scaled\best_mamba_aqi.pt
-runs\mamba_20260523_y_scaled\metrics_history.csv
-runs\mamba_20260523_y_scaled\test_predictions.csv
-runs\mamba_20260523_y_scaled\training_metadata.json
+s3://air-quality-artifacts/mamba/province=<province>/run_id=mamba_<province>_20260525/
 ```
 
-Output MinIO:
+Trong mỗi folder tỉnh có:
 
 ```text
-s3://air-quality-artifacts/mamba/run_id=mamba_20260523_y_scaled/
+best_model.pt
+best_mamba_aqi.pt
+metrics_history.csv
+test_predictions.csv
+training_metadata.json
+artifact_manifest.json
 ```
 
 ### metrics_history.csv
@@ -472,16 +498,29 @@ prepare_inference_input.py không fit scaler mới.
 Nó phải dùng scaler.pkl đã fit ở prepare_training_dataset.py.
 ```
 
-Lệnh chạy:
+Lệnh chạy hiện tại cũng chạy theo từng tỉnh, dùng đúng scaler của dataset tỉnh đó:
 
 ```powershell
-.\.venv\Scripts\python.exe src\Gold\prepare_inference_input.py `
-  --locations DataSet\locations.jsonl `
-  --config Conf\air_quality.yaml `
-  --run-id gold_train_20260523 `
-  --end-date 2026-05-23 `
-  --lookback-days 4 `
-  --output-run-id infer_20260523
+$end = "2026-05-25"
+$tag = "20260525"
+
+$locations = Get-Content DataSet\locations.jsonl | ForEach-Object {
+  (ConvertFrom-Json $_).location_key
+}
+
+foreach ($loc in $locations) {
+  $datasetRun = "gold_train_${loc}_${tag}"
+  $inferRun = "infer_${loc}_${tag}"
+
+  .\.venv\Scripts\python.exe src\Gold\prepare_inference_input.py `
+    --locations DataSet\locations.jsonl `
+    --location-keys $loc `
+    --config Conf\air_quality.yaml `
+    --run-id $datasetRun `
+    --end-date $end `
+    --lookback-days 7 `
+    --output-run-id $inferRun
+}
 ```
 
 Output:
@@ -514,29 +553,41 @@ best_mamba_aqi.pt
 training_metadata.json
 ```
 
-Lệnh chạy:
+Lệnh chạy hiện tại load model trực tiếp từ MinIO theo `province` và `model-run-id`, không cần checkpoint local:
 
 ```powershell
-.\.venv\Scripts\python.exe src\Inference\run_mamba_inference.py `
-  --inference-run-id infer_20260523 `
-  --checkpoint runs\mamba_20260523_y_scaled\best_mamba_aqi.pt `
-  --metadata runs\mamba_20260523_y_scaled\training_metadata.json `
-  --output-path runs\inference\infer_20260523\future_predictions.csv `
-  --artifact-run-id infer_20260523 `
-  --device cuda `
-  --amp
+$tag = "20260525"
+
+$locations = Get-Content DataSet\locations.jsonl | ForEach-Object {
+  (ConvertFrom-Json $_).location_key
+}
+
+foreach ($loc in $locations) {
+  $modelRun = "mamba_${loc}_${tag}"
+  $inferRun = "infer_${loc}_${tag}"
+
+  .\.venv\Scripts\python.exe src\Inference\run_mamba_inference.py `
+    --inference-run-id $inferRun `
+    --province $loc `
+    --model-run-id $modelRun `
+    --artifact-run-id $inferRun `
+    --device cuda `
+    --amp
+}
 ```
 
-Output local:
-
-```text
-runs\inference\infer_20260523\future_predictions.csv
-```
+Nếu không truyền `--output-path`, file predict chỉ được ghi tạm, upload lên MinIO xong sẽ tự xóa local. Chỉ thêm `--keep-local` khi cần debug.
 
 Output MinIO:
 
 ```text
-s3://air-quality-artifacts/mamba_inference/run_id=infer_20260523/future_predictions.csv
+s3://air-quality-artifacts/mamba_inference/province=<province>/forecast_date=<YYYY-MM-DD>/run_id=infer_<province>_20260525/future_predictions.csv
+```
+
+Ví dụ nếu lấy dữ liệu đến ngày `2026-05-25` và dự đoán bắt đầu sang `2026-05-26`, kết quả của An Giang sẽ lưu ở:
+
+```text
+s3://air-quality-artifacts/mamba_inference/province=an_giang/forecast_date=2026-05-26/run_id=infer_an_giang_20260525/future_predictions.csv
 ```
 
 ### future_predictions.csv
@@ -671,13 +722,16 @@ air-quality-artifacts
 
 ## 12. Luồng chạy nhiều ngày
 
-Ví dụ chạy từ `2026-05-20` đến `2026-05-23`:
+Ví dụ chạy từ `2026-05-20` đến `2026-05-25` theo đúng yêu cầu mỗi tỉnh một dataset, một model, một metrics:
 
 ```powershell
 cd D:\KLTN\KLTN_Mamba
 .\.venv\Scripts\Activate.ps1
 
-$dates = @("2026-05-20","2026-05-21","2026-05-22","2026-05-23")
+$dates = @("2026-05-20","2026-05-21","2026-05-22","2026-05-23","2026-05-24","2026-05-25")
+$start = "2026-05-20"
+$end = "2026-05-25"
+$tag = "20260525"
 
 foreach ($d in $dates) {
   .\.venv\Scripts\python.exe src\Silver\Data_Validation.py --locations DataSet\locations.jsonl --mode hourly --date $d
@@ -686,36 +740,47 @@ foreach ($d in $dates) {
   .\.venv\Scripts\python.exe src\Gold\gold_feature_engineering.py --locations DataSet\locations.jsonl --date $d --config Conf\air_quality.yaml
 }
 
-.\.venv\Scripts\python.exe src\Gold\prepare_training_dataset.py `
-  --locations DataSet\locations.jsonl `
-  --config Conf\air_quality.yaml `
-  --start-date 2026-05-20 `
-  --end-date 2026-05-23 `
-  --run-id gold_train_20260523
+$locations = Get-Content DataSet\locations.jsonl | ForEach-Object {
+  (ConvertFrom-Json $_).location_key
+}
 
-.\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
-  --config Conf\air_quality.yaml `
-  --run-id gold_train_20260523 `
-  --out-dir runs\mamba_20260523_y_scaled `
-  --device cuda `
-  --amp
+foreach ($loc in $locations) {
+  $datasetRun = "gold_train_${loc}_${tag}"
+  $modelRun = "mamba_${loc}_${tag}"
+  $inferRun = "infer_${loc}_${tag}"
 
-.\.venv\Scripts\python.exe src\Gold\prepare_inference_input.py `
-  --locations DataSet\locations.jsonl `
-  --config Conf\air_quality.yaml `
-  --run-id gold_train_20260523 `
-  --end-date 2026-05-23 `
-  --lookback-days 4 `
-  --output-run-id infer_20260523
+  .\.venv\Scripts\python.exe src\Gold\prepare_training_dataset.py `
+    --locations DataSet\locations.jsonl `
+    --location-keys $loc `
+    --config Conf\air_quality.yaml `
+    --start-date $start `
+    --end-date $end `
+    --run-id $datasetRun
 
-.\.venv\Scripts\python.exe src\Inference\run_mamba_inference.py `
-  --inference-run-id infer_20260523 `
-  --checkpoint runs\mamba_20260523_y_scaled\best_mamba_aqi.pt `
-  --metadata runs\mamba_20260523_y_scaled\training_metadata.json `
-  --output-path runs\inference\infer_20260523\future_predictions.csv `
-  --artifact-run-id infer_20260523 `
-  --device cuda `
-  --amp
+  .\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
+    --config Conf\air_quality.yaml `
+    --run-id $datasetRun `
+    --model-run-id $modelRun `
+    --device cuda `
+    --amp
+
+  .\.venv\Scripts\python.exe src\Gold\prepare_inference_input.py `
+    --locations DataSet\locations.jsonl `
+    --location-keys $loc `
+    --config Conf\air_quality.yaml `
+    --run-id $datasetRun `
+    --end-date $end `
+    --lookback-days 7 `
+    --output-run-id $inferRun
+
+  .\.venv\Scripts\python.exe src\Inference\run_mamba_inference.py `
+    --inference-run-id $inferRun `
+    --province $loc `
+    --model-run-id $modelRun `
+    --artifact-run-id $inferRun `
+    --device cuda `
+    --amp
+}
 ```
 
 ## 13. Luồng Airflow dự kiến sau này
@@ -728,10 +793,11 @@ bronze_crawl
   -> silver_validate_daily
   -> silver_processing
   -> gold_feature_engineering
-  -> prepare_training_dataset
-  -> train_mamba
-  -> prepare_inference_input
-  -> run_mamba_inference
+  -> for each province:
+       prepare_training_dataset
+       train_mamba
+       prepare_inference_input
+       run_mamba_inference
 ```
 
 Nếu không muốn train mỗi ngày, có thể tách:
@@ -755,10 +821,10 @@ Cách này thực tế hơn:
 Silver = dữ liệu sạch
 Gold feature = dữ liệu sạch + feature thời gian
 Training dataset = Gold feature -> sliding window train/val/test
-Train Mamba = học từ X_train/y_train, đánh giá bằng val/test
+Train Mamba = mỗi tỉnh một model, học từ X_train/y_train, đánh giá bằng val/test
 test_predictions.csv = đánh giá lịch sử, có y_true
-prepare_inference_input = lấy 72 giờ mới nhất, scale bằng scaler cũ
-future_predictions.csv = dự đoán tương lai thật, chỉ có y_pred
+prepare_inference_input = lấy 72 giờ mới nhất của từng tỉnh, scale bằng scaler cũ của tỉnh đó
+future_predictions.csv = dự đoán tương lai thật theo từng tỉnh, chỉ có y_pred
 ```
 
 Với pipeline hiện tại:
@@ -768,4 +834,5 @@ Train dùng sliding window.
 Predict dùng direct multi-step forecast 12 giờ.
 Location không còn embedding.
 MinIO là nguồn dữ liệu chính.
+Artifact train lưu theo s3://air-quality-artifacts/mamba/province=<province>/run_id=<model_run_id>/.
 ```
