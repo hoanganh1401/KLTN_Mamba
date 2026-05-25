@@ -1,0 +1,64 @@
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.10 \
+        python3.10-venv \
+        python3-pip \
+        python3-dev \
+        build-essential \
+        ninja-build \
+        git \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/KLTN_Mamba
+
+COPY requirements.txt /workspace/KLTN_Mamba/requirements.txt
+
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+ARG TORCH_VERSION=2.5.1
+ARG TORCHVISION_VERSION=0.20.1
+ARG TORCHAUDIO_VERSION=2.5.1
+ARG ENABLE_MAMBA_FASTPATH=0
+ARG ENABLE_MAMBA_SSM=0
+ARG CAUSAL_CONV1D_VERSION=1.5.0.post8
+ARG MAMBA_SSM_VERSION=2.2.4
+ARG TORCH_CUDA_ARCH_LIST=""
+
+ENV CUDA_HOME=/usr/local/cuda
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
+ENV MAX_JOBS=1
+
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install --no-cache-dir wheel packaging ninja \
+    && python3 -m pip install --no-cache-dir \
+        torch==${TORCH_VERSION} \
+        torchvision==${TORCHVISION_VERSION} \
+        torchaudio==${TORCHAUDIO_VERSION} \
+        --index-url ${TORCH_INDEX_URL} \
+    && python3 -m pip install --no-cache-dir -r requirements.txt \
+    && python3 -m pip install --no-cache-dir streamlit numpy pandas scikit-learn \
+    && if [ "${ENABLE_MAMBA_FASTPATH}" = "1" ]; then \
+           MAX_JOBS=1 python3 -m pip install --no-cache-dir "causal-conv1d==${CAUSAL_CONV1D_VERSION}" --no-build-isolation; \
+       else \
+           echo "Skipping causal-conv1d (ENABLE_MAMBA_FASTPATH=0)"; \
+       fi
+
+RUN if [ "${ENABLE_MAMBA_SSM}" = "1" ]; then \
+        MAX_JOBS=1 python3 -m pip install --no-cache-dir "mamba-ssm==${MAMBA_SSM_VERSION}" --no-build-isolation; \
+    else \
+        echo "Skipping mamba-ssm (ENABLE_MAMBA_SSM=0)"; \
+    fi
+
+COPY . /workspace/KLTN_Mamba
+
+EXPOSE 8501
+
+CMD ["python3", "-m", "streamlit", "run", "App/streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]

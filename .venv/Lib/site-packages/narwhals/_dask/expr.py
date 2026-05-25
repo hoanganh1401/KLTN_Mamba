@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
 
@@ -26,7 +26,7 @@ from narwhals._utils import (
 from narwhals.exceptions import InvalidOperationError
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     import dask.dataframe.dask_expr as dx
     from typing_extensions import Self
@@ -111,6 +111,7 @@ class DaskExpr(
     sum = simple_aggregation("sum")
     var = simple_aggregation("var")
     __invert__ = simple_method("__invert__")
+    __neg__ = simple_method("__neg__")
     abs = simple_method("abs")
     diff = simple_method("diff")
     drop_nulls = simple_method("dropna")
@@ -672,7 +673,7 @@ class DaskExpr(
             msg = "`replace_strict` requires an explicit value for `default` for dask backend."
             raise ValueError(msg)
 
-        mapping = dict(zip(old, new))
+        mapping = dict(zip(old, new, strict=False))
         old_ = list(old)
 
         def func(df: DaskLazyFrame) -> list[dx.Series]:

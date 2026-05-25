@@ -1,24 +1,38 @@
 """
 gold_feature_engineering.py — Silver/processed → Gold/feature_engineering
 =========================================================================
-File này chỉ chứa tiến trình đã có sẵn trong Data_processing.py:
+File này xử lý dữ liệu Silver đã làm sạch thành dữ liệu Gold phục vụ model.
+
+Các bước hiện có:
 - Tạo cyclic time features: hour_sin, hour_cos, month_sin, month_cos
 - Tạo calendar features: day_of_week, is_weekend
+- Giữ lại các cột audit flag của Silver để bước tạo dataset/inference kiểm tra
+  chất lượng window trước khi đưa dữ liệu vào model.
 
-Chưa thêm lag/rolling/sliding-window vì file gốc chưa có các bước đó.
+File này không train model và không tạo sliding window. Sliding window được tạo
+ở prepare_training_dataset.py.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from minio import Minio
 
-from common.config import MINIO_GOLD_BUCKET, load_processing_config
+_SRC_ROOT = Path(__file__).resolve().parents[1]
+if str(_SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(_SRC_ROOT))
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+from common.config import MINIO_GOLD_BUCKET, load_processing_config, load_project_config
 from common.minio_io import (
     get_client,
     gold_feature_path,
@@ -28,15 +42,22 @@ from common.minio_io import (
 )
 
 
+def _resolve_time_column(df: pd.DataFrame) -> str:
+    if "time" in df.columns:
+        return "time"
+    for col in df.columns:
+        if col.lower() == "time":
+            return col
+    raise ValueError("Missing required column: time")
+
+
 def step_time_features(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
-    Thêm cyclic time features theo danh sách được chỉ định từ EDA config.
+    Thêm cyclic/calendar time features theo danh sách được chỉ định từ config.
     Supported: hour_sin, hour_cos, month_sin, month_cos, day_of_week, is_weekend
     """
-    if "time" not in df.columns:
-        raise ValueError("Missing required column: time")
-
-    t = pd.to_datetime(df["time"], utc=True, errors="coerce")
+    time_col = _resolve_time_column(df)
+    t = pd.to_datetime(df[time_col], utc=True, errors="coerce")
     hour = t.dt.hour
     month = t.dt.month
 
@@ -50,6 +71,8 @@ def step_time_features(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     }
 
     df = df.copy()
+    if time_col != "time":
+        df = df.rename(columns={time_col: "time"})
     df["time"] = t
     for feat in features:
         if feat in feature_map:
@@ -61,12 +84,13 @@ def step_time_features(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
 
 
 def step_reorder_gold_features(df: pd.DataFrame, metric_cols: list[str], time_features: list[str]) -> pd.DataFrame:
-    """Sắp xếp cột cho Gold features: identity → metrics → time features → flags → other."""
+    """Order Gold columns and keep Silver audit flags for downstream quality gates."""
     identity = ["time", "location", "latitude", "longitude"]
     metrics = [c for c in metric_cols if c in df.columns]
     time_feat = [c for c in time_features if c in df.columns]
     flags = sorted([c for c in df.columns if c.startswith("_")])
-    other = [c for c in df.columns if c not in identity + metrics + time_feat + flags]
+    excluded = set(identity + metrics + time_feat)
+    other = [c for c in df.columns if c not in excluded and not c.startswith("_")]
 
     ordered = identity + metrics + time_feat + flags + other
     return df[[c for c in ordered if c in df.columns]]
@@ -101,13 +125,29 @@ def process_day(client: Minio, location_key: str, target_date: date, cfg: dict) 
     return log
 
 
-def run_feature_engineering(locations_path: str, target_date_str: str) -> None:
+def run_feature_engineering(
+    locations_path: str,
+    target_date_str: str,
+    config_path: str | None = None,
+    location_keys: list[str] | None = None,
+) -> None:
     target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
     client = get_client()
     cfg = load_processing_config(client)
 
-    with open(locations_path, encoding="utf-8") as f:
-        locations = [json.loads(line) for line in f if line.strip()]
+    project_cfg = load_project_config(config_path)
+    data_cfg = project_cfg.get("data", {})
+    features_cfg = project_cfg.get("features", {})
+    if data_cfg.get("metric_cols"):
+        cfg["metric_cols"] = data_cfg["metric_cols"]
+    if features_cfg.get("time_features"):
+        cfg["time_features"] = features_cfg["time_features"]
+
+    if location_keys:
+        locations = [{"location_key": key} for key in location_keys]
+    else:
+        with open(locations_path, encoding="utf-8") as f:
+            locations = [json.loads(line) for line in f if line.strip()]
 
     all_logs = []
     for loc in locations:
@@ -136,11 +176,14 @@ def run_feature_engineering(locations_path: str, target_date_str: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Gold feature engineering — time features only")
     parser.add_argument("--locations", required=True, help="Path to JSONL locations file")
+    parser.add_argument("--location-keys", default=None, help="Comma-separated province keys, e.g. an_giang")
     parser.add_argument("--date", default=None, help="YYYY-MM-DD (default: yesterday)")
+    parser.add_argument("--config", default=None, help="Path to project YAML config")
     args = parser.parse_args()
 
     target = args.date or (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-    run_feature_engineering(args.locations, target)
+    location_keys = [x.strip() for x in args.location_keys.split(",") if x.strip()] if args.location_keys else None
+    run_feature_engineering(args.locations, target, args.config, location_keys)
 
 
 if __name__ == "__main__":

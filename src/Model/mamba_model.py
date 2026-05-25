@@ -1,0 +1,69 @@
+"""
+Mamba model for AQI time-series forecasting.
+
+The province/location name is used only by the data pipeline to group a
+continuous time series per province. The model itself receives only numeric
+time-series features with shape (batch, seq_len, num_features).
+"""
+
+from __future__ import annotations
+
+import sys
+import os
+from pathlib import Path
+
+import torch
+import torch.nn as nn
+
+_MODEL_DIR = Path(__file__).resolve().parent
+if str(_MODEL_DIR) not in sys.path:
+    sys.path.insert(0, str(_MODEL_DIR))
+
+try:
+    from mamba_ssm import Mamba
+except ModuleNotFoundError:
+    from .mamba_ssm import Mamba
+
+
+class TimeSeriesMambaRegressor(nn.Module):
+    """Pure time-series Mamba regressor without location embedding."""
+
+    def __init__(
+        self,
+        num_features: int,
+        d_model: int = 64,
+        n_layers: int = 2,
+        horizon: int = 1,
+    ) -> None:
+        super().__init__()
+        self.num_features = int(num_features)
+        self.horizon = int(horizon)
+        self.use_location_embedding = False
+
+        use_fast_path = os.environ.get("MAMBA_USE_FASTPATH", "0").lower() in {"1", "true", "yes"}
+
+        self.input_proj = nn.Linear(self.num_features, d_model)
+        self.layers = nn.ModuleList(
+            [
+                Mamba(d_model=d_model, d_state=16, d_conv=4, expand=2, use_fast_path=use_fast_path)
+                for _ in range(n_layers)
+            ]
+        )
+        self.norm = nn.LayerNorm(d_model)
+        self.head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, self.horizon),
+        )
+
+    def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
+        """Return forecast with shape (batch, horizon)."""
+        x = self.input_proj(x_seq)
+        for layer in self.layers:
+            x = layer(x)
+        x = self.norm(x)
+        return self.head(x[:, -1, :])
+
+
+class TimeSeriesMambaRegressorNoLoc(TimeSeriesMambaRegressor):
+    """Backward-compatible alias for the no-location Mamba regressor."""

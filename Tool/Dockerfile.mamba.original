@@ -1,0 +1,45 @@
+﻿ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        python3.10 \
+        python3.10-venv \
+        python3-pip \
+        python3-dev \
+        build-essential \
+        git \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/KLTN_Mamba
+
+COPY . /workspace/KLTN_Mamba
+
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+ARG ENABLE_MAMBA_FASTPATH=0
+ARG ENABLE_MAMBA_SSM=0
+
+RUN python3 -m pip install --upgrade pip \
+    && python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url ${TORCH_INDEX_URL} \
+    && python3 -m pip install --no-cache-dir streamlit numpy pandas scikit-learn \
+        && if [ "${ENABLE_MAMBA_FASTPATH}" = "1" ]; then \
+                 python3 -m pip install --no-cache-dir "causal-conv1d>=1.4.0" --no-build-isolation; \
+             else \
+                 echo "Skipping causal-conv1d (ENABLE_MAMBA_FASTPATH=0)"; \
+             fi \
+        && if [ "${ENABLE_MAMBA_SSM}" = "1" ]; then \
+                 python3 -m pip install --no-cache-dir mamba-ssm --no-build-isolation; \
+             else \
+                 echo "Skipping mamba-ssm (ENABLE_MAMBA_SSM=0)"; \
+             fi
+
+EXPOSE 8501
+
+CMD ["python3", "-m", "streamlit", "run", "App/streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+

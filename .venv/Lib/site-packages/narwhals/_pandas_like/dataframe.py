@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from itertools import chain, product
-from typing import TYPE_CHECKING, Any, Callable, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 import numpy as np
 
@@ -31,7 +31,6 @@ from narwhals._utils import (
     generate_temporary_column_name,
     parse_columns_to_drop,
     scale_bytes,
-    zip_strict,
 )
 from narwhals.dependencies import is_pandas_like_dataframe
 from narwhals.exceptions import InvalidOperationError, ShapeError
@@ -41,10 +40,11 @@ if TYPE_CHECKING:
     from io import BytesIO
     from pathlib import Path
     from types import ModuleType
+    from typing import TypeAlias
 
     import pandas as pd
     import polars as pl
-    from typing_extensions import Self, TypeAlias, TypeIs
+    from typing_extensions import Self, TypeIs
 
     from narwhals._compliant.typing import CompliantDataFrameAny, CompliantLazyFrameAny
     from narwhals._pandas_like.expr import PandasLikeExpr
@@ -185,7 +185,7 @@ class PandasLikeDataFrame(
                     implementation=context._implementation,
                     version=context._version,
                 )
-                for ((key, dtype), backend) in zip(schema.items(), backends)
+                for ((key, dtype), backend) in zip(schema.items(), backends, strict=False)
                 if dtype is not None
             }
             native = native.astype(native_schema)
@@ -220,7 +220,7 @@ class PandasLikeDataFrame(
                     implementation=context._implementation,
                     version=context._version,
                 )
-                for ((key, dtype), backend) in zip(schema.items(), backends)
+                for ((key, dtype), backend) in zip(schema.items(), backends, strict=False)
                 if dtype is not None
             }
             native = native.astype(native_schema)
@@ -418,7 +418,7 @@ class PandasLikeDataFrame(
         else:
             col_names = self.native.columns
             for row in self.native.itertuples(index=False):
-                yield dict(zip(col_names, row))
+                yield dict(zip(col_names, row, strict=False))
 
     @property
     def schema(self) -> dict[str, DType]:
@@ -628,13 +628,16 @@ class PandasLikeDataFrame(
         )
         extra = [
             right_key if right_key not in self.columns else f"{right_key}{suffix}"
-            for left_key, right_key in zip_strict(left_on, right_on)
+            for left_key, right_key in zip(left_on, right_on, strict=True)
             if right_key != left_key
         ]
-        # NOTE: Keep `inplace=True` to avoid making a redundant copy.
-        # This may need updating, depending on https://github.com/pandas-dev/pandas/pull/51466/files
-        result_native.drop(columns=extra, inplace=True)  # noqa: PD002
-        return result_native
+        impl = self._implementation
+        if impl.is_pandas() and impl._backend_version() < (3, 0):  # pragma: no cover
+            # NOTE: Keep `inplace=True` to avoid making a redundant copy.
+            result_native.drop(columns=extra, inplace=True)  # noqa: PD002
+            return result_native
+
+        return result_native.drop(columns=extra)
 
     def _join_full(
         self, other: Self, *, left_on: Sequence[str], right_on: Sequence[str], suffix: str
@@ -669,11 +672,11 @@ class PandasLikeDataFrame(
         )
 
     def _join_cross(self, other: Self, *, suffix: str) -> pd.DataFrame:
-        implementation = self._implementation
-        backend_version = self._backend_version
-        if (implementation.is_modin() or implementation.is_cudf()) or (
-            implementation.is_pandas() and backend_version < (1, 4)
-        ):
+        impl = self._implementation
+        backend_version = impl._backend_version()
+        if (impl.is_modin() or impl.is_cudf()) or (
+            impl.is_pandas() and backend_version < (1, 4)
+        ):  # pragma: no cover
             key_token = generate_temporary_column_name(
                 n_bytes=8, columns=(*self.columns, *other.columns)
             )
@@ -684,10 +687,12 @@ class PandasLikeDataFrame(
                 right_on=key_token,
                 suffixes=("", suffix),
             )
-            # NOTE: Keep `inplace=True` to avoid making a redundant copy.
-            # This may need updating, depending on https://github.com/pandas-dev/pandas/pull/51466/files
-            result_native.drop(columns=key_token, inplace=True)  # noqa: PD002
-            return result_native
+            if impl.is_pandas():
+                # NOTE: Keep `inplace=True` to avoid making a redundant copy.
+                result_native.drop(columns=key_token, inplace=True)  # noqa: PD002
+                return result_native
+            return result_native.drop(columns=key_token)
+
         return self.native.merge(other.native, how="cross", suffixes=("", suffix))
 
     def _join_semi(
@@ -696,7 +701,7 @@ class PandasLikeDataFrame(
         other_native = self._join_filter_rename(
             other=other,
             columns_to_select=list(right_on),
-            columns_mapping=dict(zip(right_on, left_on)),
+            columns_mapping=dict(zip(right_on, left_on, strict=False)),
         )
         return self.native.dropna(subset=left_on, how="any").merge(
             other_native, how="inner", left_on=left_on, right_on=left_on
@@ -705,9 +710,9 @@ class PandasLikeDataFrame(
     def _join_anti(
         self, other: Self, *, left_on: Sequence[str], right_on: Sequence[str]
     ) -> pd.DataFrame:
-        implementation = self._implementation
+        impl = self._implementation
 
-        if implementation.is_cudf():
+        if impl.is_cudf():
             return self.native.merge(
                 other.native.dropna(subset=left_on, how="any"),
                 how="leftanti",
@@ -722,20 +727,23 @@ class PandasLikeDataFrame(
         other_native = self._join_filter_rename(
             other=other,
             columns_to_select=list(right_on),
-            columns_mapping=dict(zip(right_on, left_on)),
+            columns_mapping=dict(zip(right_on, left_on, strict=True)),
         )
         result_native = self.native.merge(
             other_native.dropna(subset=left_on, how="any"),
             # TODO(FBruzzesi): See https://github.com/modin-project/modin/issues/7384
-            how="left" if implementation.is_pandas() else "outer",
+            how="left" if impl.is_pandas() else "outer",
             indicator=indicator_token,
             left_on=left_on,
             right_on=left_on,
         ).loc[lambda t: t[indicator_token] == "left_only"]
-        # NOTE: Keep `inplace=True` to avoid making a redundant copy.
-        # This may need updating, depending on https://github.com/pandas-dev/pandas/pull/51466/files
-        result_native.drop(columns=indicator_token, inplace=True)  # noqa: PD002
-        return result_native
+
+        if impl.is_pandas() and impl._backend_version() < (3, 0):  # pragma: no cover
+            # NOTE: Keep `inplace=True` to avoid making a redundant copy.
+            result_native.drop(columns=indicator_token, inplace=True)  # noqa: PD002
+            return result_native
+
+        return result_native.drop(columns=indicator_token)
 
     def _join_filter_rename(
         self, other: Self, columns_to_select: list[str], columns_mapping: dict[str, str]

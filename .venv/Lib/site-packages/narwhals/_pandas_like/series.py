@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Literal, overload
+from typing import TYPE_CHECKING, Any, Literal, overload
 
 from narwhals._compliant import EagerSeries, EagerSeriesHist
 from narwhals._pandas_like.series_cat import PandasLikeSeriesCatNamespace
@@ -31,13 +31,14 @@ from narwhals.dtypes import String
 from narwhals.exceptions import InvalidOperationError
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable, Iterable, Iterator, Sequence
+    from collections.abc import Callable, Hashable, Iterable, Iterator, Sequence
     from types import ModuleType
+    from typing import TypeAlias
 
     import pandas as pd
     import polars as pl
     import pyarrow as pa
-    from typing_extensions import Self, TypeAlias, TypeIs
+    from typing_extensions import Self, TypeIs
 
     from narwhals._arrow.typing import ChunkedArrayAny
     from narwhals._compliant.series import HistData
@@ -209,7 +210,7 @@ class PandasLikeSeries(EagerSeries[Any]):
         Series = series[0].__native_namespace__().Series
         lengths = [len(s) for s in series]
         target_length = max(
-            length for length, s in zip(lengths, series) if not s._broadcast
+            length for length, s in zip(lengths, series, strict=False) if not s._broadcast
         )
         idx = series[lengths.index(target_length)].native.index
         reindexed = []
@@ -302,11 +303,8 @@ class PandasLikeSeries(EagerSeries[Any]):
         )
         series = native_series if in_place else native_series.copy(deep=True)
 
-        if impl.is_pandas():
-            if in_place and NUMPY_VERSION < (2,):  # pragma: no cover
-                values_native = values_native.copy()
-            if self._backend_version < (1, 2):
-                indices_native = indices_native.to_numpy()
+        if impl.is_pandas() and in_place and NUMPY_VERSION < (2,):  # pragma: no cover
+            values_native = values_native.copy()
 
         series.iloc[indices_native] = values_native
 
@@ -406,7 +404,8 @@ class PandasLikeSeries(EagerSeries[Any]):
         preserve_broadcast = self._broadcast and getattr(other, "_broadcast", True)
         try:
             res = op(ser, other_native)
-        except TypeError:
+        except TypeError:  # pragma: no cover
+            # Fixed in pandas 3.0.3
             if (
                 op.__name__ == "add"
                 and self.dtype == String
@@ -502,6 +501,9 @@ class PandasLikeSeries(EagerSeries[Any]):
 
     def __invert__(self) -> Self:
         return self._with_native(~self.native)
+
+    def __neg__(self) -> Self:
+        return self._with_native(-self.native)
 
     # Reductions
 
@@ -610,7 +612,8 @@ class PandasLikeSeries(EagerSeries[Any]):
         return res_ser
 
     def fill_nan(self, value: float | None) -> Self:
-        if self._implementation.is_cudf() and (value is None):
+        impl = self._implementation
+        if impl.is_cudf() and (value is None):
             # TODO(Unassigned): https://github.com/narwhals-dev/narwhals/issues/3231
             msg = "`fill_nan(value=None)` is not support for CuDF backend"
             raise NotImplementedError(msg)
@@ -621,8 +624,13 @@ class PandasLikeSeries(EagerSeries[Any]):
         fill = s.array.dtype.na_value if value is None else value
         # If/when pandas exposes an API which distinguishes NaN vs null, use that.
         mask = s != s  # noqa: PLR0124
-        # Carefully use `inplace`, as `mask` isn't provided by the user.
-        mask.fillna(False, inplace=True)  # noqa: PD002
+        backend_version = impl._backend_version()
+        if impl.is_pandas() and backend_version < (3, 0):  # pragma: no cover
+            # Carefully use `inplace`, as `mask` isn't provided by the user.
+            mask.fillna(False, inplace=True)  # noqa: PD002
+        else:
+            mask = mask.fillna(False)
+
         return self._with_native(s.mask(mask, fill), preserve_broadcast=True)
 
     def drop_nulls(self) -> Self:

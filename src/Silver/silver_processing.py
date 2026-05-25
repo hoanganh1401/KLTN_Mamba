@@ -20,10 +20,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 from minio import Minio
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+_SRC_ROOT = Path(__file__).resolve().parents[1]
+_COMMON_ROOT = _SRC_ROOT / "common"
+for _path in (str(_SRC_ROOT), str(_COMMON_ROOT)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from common.config import MINIO_SILVER_BUCKET, load_processing_config
 from common.minio_io import (

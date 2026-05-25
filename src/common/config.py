@@ -16,7 +16,14 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
+
 from minio import Minio
+
+try:
+    import yaml
+except Exception:  # pragma: no cover - optional dependency
+    yaml = None
 
 
 # =============================
@@ -27,6 +34,7 @@ MINIO_ACCESS = os.environ.get("MINIO_ACCESS_KEY", "admin")
 MINIO_SECRET = os.environ.get("MINIO_SECRET_KEY", "admin123")
 MINIO_SILVER_BUCKET = os.environ.get("MINIO_SILVER_BUCKET", "air-quality-silver")
 MINIO_GOLD_BUCKET = os.environ.get("MINIO_GOLD_BUCKET", "air-quality-gold")
+MINIO_ARTIFACTS_BUCKET = os.environ.get("MINIO_ARTIFACTS_BUCKET", "air-quality-artifacts")
 MINIO_SECURE = os.environ.get("MINIO_SECURE", "false").lower() == "true"
 
 # EDA config objects
@@ -58,6 +66,8 @@ _DEFAULT_MAX_FFILL_GAP_H = 6
 _DEFAULT_TIME_FEATURES = [
     "hour_sin", "hour_cos", "month_sin", "month_cos", "day_of_week", "is_weekend"
 ]
+
+_PROJECT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "Conf" / "air_quality.yaml"
 
 
 def load_processing_config(client: Minio) -> dict:
@@ -154,3 +164,21 @@ def load_processing_config(client: Minio) -> dict:
     )
 
     return config
+
+
+def load_project_config(path: str | None = None) -> dict:
+    """Load project YAML config from Conf/air_quality.yaml (or custom path)."""
+    config_path = Path(path) if path else _PROJECT_CONFIG_PATH
+    if not config_path.exists():
+        print(f"⚠️  Project config not found: {config_path}")
+        return {}
+    if yaml is None:
+        print("⚠️  PyYAML not installed; cannot read project config.")
+        return {}
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        print(f"⚠️  Failed to load project config: {exc}")
+        return {}

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import operator
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from duckdb import CoalesceOperator, StarExpression
 
@@ -24,7 +24,7 @@ from narwhals._sql.expr import SQLExpr
 from narwhals._utils import NO_DEFAULT, Implementation, Version, extend_bool
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from duckdb import Expression
     from typing_extensions import Self
@@ -160,6 +160,10 @@ class DuckDBExpr(SQLExpr["DuckDBLazyFrame", "Expression"]):
     def __invert__(self) -> Self:
         invert = cast("Callable[..., Expression]", operator.invert)
         return self._with_elementwise(invert)
+
+    def __neg__(self) -> Self:
+        neg = cast("Callable[..., Expression]", operator.neg)
+        return self._with_elementwise(neg)
 
     def skew(self) -> Self:
         W = self._window_expression  # noqa: N806

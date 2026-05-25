@@ -93,6 +93,8 @@ x-airflow-common:
     - ../src/Gold:/opt/Project/src/Gold
     - ../src/Model:/opt/Project/src/Model
     - ../src/Inference:/opt/Project/src/Inference
+    - ../src/common:/opt/Project/src/common
+    - ../src/core:/opt/Project/src/core
     # mount project requirements so Airflow can pip install them at startup
     - ./requirements.txt:/opt/Tool/requirements.txt:ro
   user: "${AIRFLOW_UID:-50000}:0"
@@ -427,6 +429,33 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  ts-mamba:
+    build:
+      context: ..
+      dockerfile: Tool/Dockerfile.mamba
+      args:
+        BASE_IMAGE: nvidia/cuda:12.4.1-devel-ubuntu22.04
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu124
+        TORCH_VERSION: "2.5.1"
+        TORCHVISION_VERSION: "0.20.1"
+        TORCHAUDIO_VERSION: "2.5.1"
+        ENABLE_MAMBA_FASTPATH: "1"
+        ENABLE_MAMBA_SSM: "1"
+        CAUSAL_CONV1D_VERSION: "1.5.0.post8"
+        MAMBA_SSM_VERSION: "2.2.4"
+        TORCH_CUDA_ARCH_LIST: "8.6"
+    ports:
+      - "8501:8501"
+    volumes:
+      - ..:/workspace/KLTN_Mamba
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MAMBA_USE_FASTPATH=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    gpus: all
+    restart: unless-stopped
 
 volumes:
   postgres-db-volume:

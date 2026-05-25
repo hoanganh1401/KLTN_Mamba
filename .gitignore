@@ -1,0 +1,20 @@
+# Python environments
+.venv/
+.venv-streamlit/
+
+# Bytecode/cache
+__pycache__/
+*.py[cod]
+
+# Training outputs / artifacts
+runs/
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+Thumbs.db
+.DS_Store

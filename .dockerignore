@@ -1,0 +1,17 @@
+.git
+.venv
+.venv-streamlit
+**/__pycache__
+**/*.pyc
+**/*.pyo
+runs
+logs
+Tool/logs
+Airflow/logs
+DataSet/EDA
+src/Model/mamba_source
+*.ipynb
+*.pt
+*.pth
+*.npy
+*.pkl

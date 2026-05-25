@@ -13,14 +13,17 @@ openpyxl
 
 # Machine Learning
 scikit-learn
+tqdm
+einops
 
 # Storage / API
 minio
 requests
 python-dotenv
+pyyaml
 
 # Web App
 streamlit
 
-# Workflow
-apache-airflow
+# Torch is installed separately by Tool/Dockerfile.mamba.
+# Airflow containers install Tool/requirements.txt on startup.

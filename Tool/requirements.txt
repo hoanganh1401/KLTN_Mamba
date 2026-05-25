@@ -16,6 +16,8 @@ openpyxl
 
 # Machine Learning
 scikit-learn
+tqdm
+einops
 
 # Visualization
 plotly
@@ -24,6 +26,7 @@ plotly
 minio
 requests
 python-dotenv
+pyyaml
 
 # Web app
 streamlit

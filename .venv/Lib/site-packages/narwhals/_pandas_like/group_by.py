@@ -10,15 +10,15 @@ from narwhals._compliant import EagerGroupBy
 from narwhals._exceptions import issue_warning
 from narwhals._expression_parsing import evaluate_output_names_and_aliases
 from narwhals._pandas_like.utils import make_group_by_kwargs
-from narwhals._utils import zip_strict
 from narwhals.dependencies import is_pandas_like_dataframe
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+    from typing import TypeAlias
 
     import pandas as pd
     from pandas.api.typing import DataFrameGroupBy as _NativeGroupBy
-    from typing_extensions import TypeAlias, Unpack
+    from typing_extensions import Unpack
 
     from narwhals._compliant.typing import NarwhalsAggregation, ScalarKwargs
     from narwhals._pandas_like.dataframe import PandasLikeDataFrame
@@ -157,7 +157,13 @@ class AggExpr:
             )
         elif self.is_last() or self.is_first() or self.is_any_value():
             result = self.native_agg()(grouped[[*group_by._keys, *names]])
-            result.set_index(group_by._keys, inplace=True)  # noqa: PD002
+            impl = group_by.compliant._implementation
+            backend_version = impl._backend_version()
+            if impl.is_pandas() and backend_version < (3, 0):  # pragma: no cover
+                # NOTE: Keep `inplace=True` to avoid making a redundant copy.
+                result.set_index(group_by._keys, inplace=True)  # noqa: PD002
+            else:
+                result = result.set_index(group_by._keys)
         else:
             select = names[0] if len(names) == 1 else list(names)
             result = self.native_agg()(grouped[select])
@@ -269,7 +275,7 @@ class PandasLikeGroupBy(
         if set(self._native.index.names).intersection(self.compliant.columns):
             self._native = self._native.reset_index(drop=True)
 
-    def agg(self, *exprs: PandasLikeExpr) -> PandasLikeDataFrame:
+    def agg(self, *exprs: PandasLikeExpr) -> PandasLikeDataFrame:  # noqa: PLR0912
         all_aggs_are_simple = True
         agg_exprs: list[AggExpr] = []
         order_by = ()
@@ -305,9 +311,15 @@ class PandasLikeGroupBy(
             raise empty_results_error()
         else:
             result = self._apply_aggs(grouped, exprs)
-        # NOTE: Keep `inplace=True` to avoid making a redundant copy.
-        # This may need updating, depending on https://github.com/pandas-dev/pandas/pull/51466/files
-        result.reset_index(inplace=True)  # noqa: PD002
+
+        impl = self.compliant._implementation
+        backend_version = impl._backend_version()
+        if impl.is_pandas() and backend_version < (3, 0):  # pragma: no cover
+            # NOTE: Keep `inplace=True` to avoid making a redundant copy.
+            result.reset_index(inplace=True)  # noqa: PD002
+        else:
+            result = result.reset_index()
+
         return self._select_results(result, agg_exprs)
 
     def _select_results(
@@ -321,7 +333,7 @@ class PandasLikeGroupBy(
         return (
             self.compliant._with_native(df, validate_column_names=False)
             .simple_select(*self._keys, *new_names)
-            .rename(dict(zip(self._keys, self._output_key_names)))
+            .rename(dict(zip(self._keys, self._output_key_names, strict=False)))
         )
 
     def _getitem_aggs(
@@ -362,7 +374,7 @@ class PandasLikeGroupBy(
                 for expr in exprs
                 for keys in expr(compliant)
             )
-            out_group, out_names = zip_strict(*results) if results else ([], [])
+            out_group, out_names = zip(*results, strict=True) if results else ([], [])
             return into_series(out_group, index=out_names, context=ns).native
 
         return fn
