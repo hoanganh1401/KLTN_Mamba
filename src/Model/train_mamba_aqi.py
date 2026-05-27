@@ -1,4 +1,4 @@
-"""
+﻿"""
 src/Model/train_mamba_aqi.py
 ------------------------
 Script huấn luyện Mamba cho bài toán dự đoán AQI.
@@ -51,13 +51,47 @@ for _path in (str(_REPO_ROOT), str(_SRC_ROOT), str(_MODEL_ROOT)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+
+def _cfg_bool(value: object, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _mamba_fastpath_ready() -> bool:
+    try:
+        import mamba_ssm.ops.selective_scan_interface as selective_scan_interface
+    except Exception:
+        return False
+    return (
+        selective_scan_interface.causal_conv1d_fwd_function is not None
+        and selective_scan_interface.causal_conv1d_bwd_function is not None
+        and selective_scan_interface.selective_scan_cuda is not None
+    )
+
+
+def _mamba_cuda_path_ready() -> bool:
+    try:
+        import mamba_ssm.modules.mamba_simple as mamba_simple
+        import mamba_ssm.ops.selective_scan_interface as selective_scan_interface
+    except Exception:
+        return False
+    return (
+        mamba_simple.causal_conv1d_fn is not None
+        and selective_scan_interface.selective_scan_cuda is not None
+    )
+
 from src.core.data_structs import AQIDataset, SplitData
 from src.core.metrics import compute_metrics, denormalize
 from src.core.utils import resolve_device, set_seed, setup_logger
 from src.Inference.predict_aqi_next import build_future_24h_frame, format_time_utc_strings
 from src.Model.mamba_model import TimeSeriesMambaRegressor
 from src.common.config import MINIO_ARTIFACTS_BUCKET, MINIO_GOLD_BUCKET, load_project_config
-from src.common.minio_io import get_client, load_bytes, load_json_object, load_npy, upload_bytes, upload_json
+from src.common.minio_io import get_client, load_bytes, load_json_object, load_npy, load_pickle, upload_bytes, upload_json
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +357,99 @@ def standardize_targets(
     return train, val, test, y_mean, y_std
 
 
+def prepare_training_targets(
+    train: SplitData,
+    val: SplitData,
+    test: SplitData,
+    target_mode: str,
+) -> tuple[SplitData, SplitData, SplitData, float, float, str]:
+    mode = str(target_mode or "absolute").lower()
+    if mode not in {"absolute", "residual"}:
+        mode = "absolute"
+    if mode == "residual":
+        if train.y_base is None or val.y_base is None or test.y_base is None:
+            mode = "absolute"
+        else:
+            for split in (train, val, test):
+                split.y = (split.y - split.y_base[:, None]).astype(np.float32)
+    train, val, test, y_mean, y_std = standardize_targets(train, val, test)
+    return train, val, test, y_mean, y_std, mode
+
+
+def restore_target_scale(
+    arr: np.ndarray,
+    y_mean: float,
+    y_std: float,
+    target_mode: str = "absolute",
+    y_base: np.ndarray | None = None,
+) -> np.ndarray:
+    out = denormalize(arr, y_mean, y_std)
+    if target_mode == "residual" and y_base is not None:
+        out = out + np.asarray(y_base, dtype=np.float32).reshape(-1, 1)
+    return out
+
+
+def _find_target_feature_index(metadata: dict | None) -> int | None:
+    if not metadata:
+        return None
+    feature_cols = metadata.get("feature_cols")
+    target_col = metadata.get("target_col", "aqi")
+    if isinstance(feature_cols, list) and target_col in feature_cols:
+        return int(feature_cols.index(target_col))
+    return None
+
+
+def _safe_r2(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    y_true_f = np.asarray(y_true, dtype=np.float32).reshape(-1)
+    y_pred_f = np.asarray(y_pred, dtype=np.float32).reshape(-1)
+    denom = float(np.sum((y_true_f - y_true_f.mean()) ** 2))
+    if denom <= 1e-12:
+        return float("nan")
+    return float(1.0 - np.sum((y_true_f - y_pred_f) ** 2) / denom)
+
+
+def persistence_baseline_metrics(
+    split: SplitData,
+    metadata: dict | None,
+    scaler,
+    y_mean: float,
+    y_std: float,
+    target_mode: str = "absolute",
+) -> dict[str, float] | None:
+    target_idx = _find_target_feature_index(metadata)
+    if target_idx is None:
+        return None
+
+    feature_cols = metadata.get("feature_cols", []) if metadata else []
+    scale_cols = metadata.get("scale_cols") or metadata.get("metric_cols") or []
+    if not feature_cols or not scale_cols:
+        return None
+    target_col = metadata.get("target_col", "aqi")
+    if target_col not in scale_cols:
+        return None
+
+    try:
+        scaler_target_pos = list(scale_cols).index(target_col)
+    except ValueError:
+        return None
+
+    last_scaled = split.x_seq[:, -1, target_idx].reshape(-1, 1)
+    filler = np.zeros((last_scaled.shape[0], len(scale_cols)), dtype=np.float32)
+    filler[:, scaler_target_pos] = last_scaled[:, 0]
+    try:
+        last_aqi = scaler.inverse_transform(filler)[:, scaler_target_pos].astype(np.float32)
+    except Exception:
+        return None
+    pred = np.repeat(last_aqi[:, None], split.y.shape[1], axis=1)
+    target = restore_target_scale(split.y, y_mean, y_std, target_mode, split.y_base)
+
+    return {
+        "mae": float(mean_absolute_error(target.reshape(-1), pred.reshape(-1))),
+        "rmse": float(np.sqrt(mean_squared_error(target.reshape(-1), pred.reshape(-1)))),
+        "r2": _safe_r2(target, pred),
+    }
+
+
 def _require_npy(client, bucket: str, path: str) -> np.ndarray:
     arr = load_npy(client, bucket, path)
     if arr is None:
@@ -359,18 +486,21 @@ def load_prepared_dataset_from_minio(dataset_prefix: str) -> tuple[SplitData, Sp
         loc_ids=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/loc_ids_train.npy").astype(np.int64),
         y=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_train.npy").astype(np.float32),
         y_ts=_optional_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_ts_train.npy"),
+        y_base=_optional_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_base_train.npy"),
     )
     val = SplitData(
         x_seq=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/X_val.npy").astype(np.float32),
         loc_ids=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/loc_ids_val.npy").astype(np.int64),
         y=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_val.npy").astype(np.float32),
         y_ts=_optional_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_ts_val.npy"),
+        y_base=_optional_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_base_val.npy"),
     )
     test = SplitData(
         x_seq=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/X_test.npy").astype(np.float32),
         loc_ids=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/loc_ids_test.npy").astype(np.int64),
         y=_require_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_test.npy").astype(np.float32),
         y_ts=_optional_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_ts_test.npy"),
+        y_base=_optional_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_base_test.npy"),
     )
 
     return train, val, test, metadata
@@ -454,6 +584,8 @@ def collect_predictions(
     use_amp: bool,
     y_mean: float,
     y_std: float,
+    target_mode: str = "absolute",
+    y_base: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     model.eval()
     preds, targets = [], []
@@ -465,8 +597,8 @@ def collect_predictions(
         preds.append(pred.detach().float().cpu().numpy())
         targets.append(y.detach().float().cpu().numpy())
 
-    pred_arr = denormalize(np.concatenate(preds), y_mean, y_std)
-    target_arr = denormalize(np.concatenate(targets), y_mean, y_std)
+    pred_arr = restore_target_scale(np.concatenate(preds), y_mean, y_std, target_mode, y_base)
+    target_arr = restore_target_scale(np.concatenate(targets), y_mean, y_std, target_mode, y_base)
     return pred_arr, target_arr
 
 
@@ -608,6 +740,8 @@ def evaluate(
     use_amp:  bool,
     y_mean:   float,
     y_std:    float,
+    target_mode: str = "absolute",
+    y_base: np.ndarray | None = None,
 ) -> dict[str, float]:
     """Evaluate model trên một DataLoader, trả về dict metrics."""
     model.eval()
@@ -624,8 +758,8 @@ def evaluate(
         preds.append(pred.cpu().numpy())
         targets.append(y.cpu().numpy())
 
-    preds_arr   = denormalize(np.concatenate(preds),   y_mean, y_std)
-    targets_arr = denormalize(np.concatenate(targets), y_mean, y_std)
+    preds_arr = restore_target_scale(np.concatenate(preds), y_mean, y_std, target_mode, y_base)
+    targets_arr = restore_target_scale(np.concatenate(targets), y_mean, y_std, target_mode, y_base)
 
     preds_norm_arr = np.concatenate(preds).astype(np.float32).flatten()
     targets_norm_arr = np.concatenate(targets).astype(np.float32).flatten()
@@ -662,6 +796,7 @@ def main() -> None:
     parser.add_argument("--weight-decay",     type=float, default=1e-4)
     parser.add_argument("--d-model",          type=int,   default=64)
     parser.add_argument("--n-layers",         type=int,   default=2)
+    parser.add_argument("--dropout",          type=float, default=0.0)
     parser.add_argument("--seed",             type=int,   default=42)
     parser.add_argument("--num-workers",      type=int,   default=0)
     parser.add_argument("--out-dir",          type=str,   default=None)
@@ -677,6 +812,11 @@ def main() -> None:
     parser.add_argument("--max-grad-norm",    type=float, default=1.0)
     parser.add_argument("--patience",         type=int,   default=5)
     parser.add_argument("--min-delta",        type=float, default=0.0)
+    parser.add_argument("--min-train-samples", type=int, default=0)
+    parser.add_argument("--lr-patience",      type=int,   default=2)
+    parser.add_argument("--lr-factor",        type=float, default=0.5)
+    parser.add_argument("--min-lr",           type=float, default=1e-6)
+    parser.add_argument("--auto-cpu-for-slow-mamba", action="store_true")
     parser.add_argument("--forecast-24h",     action="store_true", help="Generate next-24h forecast CSV")
     parser.add_argument("--forecast-base",    type=str,   default=None, help="CSV path for forecast base (optional)")
     parser.add_argument("--forecast-out",     type=str,   default=None)
@@ -688,6 +828,7 @@ def main() -> None:
     dataset_cfg = project_cfg.get("dataset", {})
     model_cfg = project_cfg.get("model", {})
     training_cfg = project_cfg.get("training", {})
+    scaling_cfg = project_cfg.get("scaling", {})
 
     args.target_col = args.target_col or data_cfg.get("target_col", "aqi")
     args.window_size = int(dataset_cfg.get("seq_len", args.window_size))
@@ -696,9 +837,28 @@ def main() -> None:
     args.epochs = int(training_cfg.get("epochs", args.epochs))
     args.batch_size = int(training_cfg.get("batch_size", args.batch_size))
     args.lr = float(training_cfg.get("learning_rate", args.lr))
+    args.weight_decay = float(training_cfg.get("weight_decay", args.weight_decay))
     args.patience = int(training_cfg.get("patience", args.patience))
+    args.min_delta = float(training_cfg.get("min_delta", args.min_delta))
+    args.min_train_samples = int(training_cfg.get("min_train_samples", args.min_train_samples))
+    args.loss = str(training_cfg.get("loss", args.loss))
+    args.seed = int(training_cfg.get("seed", args.seed))
+    args.num_workers = int(training_cfg.get("num_workers", args.num_workers))
+    args.amp = _cfg_bool(training_cfg.get("amp"), args.amp)
+    args.grad_accum_steps = int(training_cfg.get("grad_accum_steps", args.grad_accum_steps))
+    args.max_grad_norm = float(training_cfg.get("max_grad_norm", args.max_grad_norm))
+    args.target_mode = str(scaling_cfg.get("target_mode", "absolute")).lower()
+    args.lr_patience = int(training_cfg.get("lr_patience", args.lr_patience))
+    args.lr_factor = float(training_cfg.get("lr_factor", args.lr_factor))
+    args.min_lr = float(training_cfg.get("min_lr", args.min_lr))
+    args.auto_cpu_for_slow_mamba = _cfg_bool(
+        training_cfg.get("auto_cpu_for_slow_mamba"),
+        args.auto_cpu_for_slow_mamba,
+    )
     args.device = str(training_cfg.get("device", args.device))
     args.d_model = int(model_cfg.get("d_model", args.d_model))
+    args.n_layers = int(model_cfg.get("n_layers", args.n_layers))
+    args.dropout = float(model_cfg.get("dropout", args.dropout))
 
     if args.run_id and not args.dataset_prefix:
         args.dataset_prefix = f"training_dataset/run_id={args.run_id}"
@@ -748,9 +908,23 @@ def main() -> None:
         loc_count = len(dataset_meta.get("location_to_id", {}))
         max_loc_id = int(max(train.loc_ids.max(), val.loc_ids.max(), test.loc_ids.max()) + 1) if train.loc_ids is not None else 0
         num_locations = loc_count or max_loc_id
-        train, val, test, y_mean, y_std = standardize_targets(train, val, test)
+        train, val, test, y_mean, y_std, target_mode = prepare_training_targets(train, val, test, args.target_mode)
         logger.info("Prepared dataset shapes: %s", json.dumps(dataset_meta.get("shapes", {}), ensure_ascii=False))
-        logger.info("Target normalized with train split stats: mean=%.6f | std=%.6f", y_mean, y_std)
+        if dataset_meta.get("target_stats"):
+            logger.info("Prepared target stats: %s", json.dumps(dataset_meta.get("target_stats"), ensure_ascii=False))
+        logger.info("Target mode: %s | normalized with train split stats: mean=%.6f | std=%.6f", target_mode, y_mean, y_std)
+        scaler = load_pickle(get_client(), MINIO_GOLD_BUCKET, f"{args.dataset_prefix.rstrip('/')}/scaler.pkl")
+        if scaler is not None:
+            for split_name, split_data in [("train", train), ("val", val), ("test", test)]:
+                baseline = persistence_baseline_metrics(split_data, dataset_meta, scaler, y_mean, y_std, target_mode)
+                if baseline:
+                    logger.info(
+                        "Persistence baseline %s | mae=%.4f | rmse=%.4f | r2=%.4f",
+                        split_name,
+                        baseline["mae"],
+                        baseline["rmse"],
+                        baseline["r2"],
+                    )
     else:
         data_path = Path(args.data_path)
         if not data_path.is_absolute():
@@ -784,20 +958,70 @@ def main() -> None:
 
         train, val, test = split_data_by_timeline(x_seq, loc_ids, y, y_ts)
         train, val, test, x_mean, x_std, y_mean, y_std = standardize(train, val, test)
+        target_mode = "absolute"
     logger.info(
         "Split — train: %d | val: %d | test: %d",
         len(train.y), len(val.y), len(test.y),
     )
+    if dataset_meta:
+        logger.info(
+            "Prepared dataset: run_id=%s | date=%s..%s | seq_len=%s | pred_len=%s | stride=%s | shapes=%s",
+            dataset_meta.get("run_id"),
+            dataset_meta.get("start_date"),
+            dataset_meta.get("end_date"),
+            dataset_meta.get("seq_len"),
+            dataset_meta.get("pred_len"),
+            dataset_meta.get("sample_stride"),
+            dataset_meta.get("shapes"),
+        )
+    if args.min_train_samples > 0 and len(train.y) < args.min_train_samples:
+        logger.warning(
+            "Train split qua nho (%d samples < min_train_samples=%d). Van tiep tuc train theo yeu cau; "
+            "ket qua co the kem on dinh. Nen tao lai training dataset voi khoang ngay dai hon khi train that.",
+            len(train.y),
+            args.min_train_samples,
+        )
 
     # DataLoaders
+    mamba_fastpath_ready = _mamba_fastpath_ready()
+    mamba_cuda_path_ready = _mamba_cuda_path_ready()
+    if (
+        args.auto_cpu_for_slow_mamba
+        and args.device == "cuda"
+        and torch.cuda.is_available()
+        and not mamba_cuda_path_ready
+        and len(train.y) < 1024
+    ):
+        logger.warning(
+            "Mamba CUDA fast path chua san sang (causal_conv1d/selective_scan_cuda missing) va dataset nho. "
+            "Tu dong chuyen sang CPU de tranh CUDA reference path bi cham. "
+            "Cai fast kernels hoac dat auto_cpu_for_slow_mamba=false neu muon ep CUDA."
+        )
+        args.device = "cpu"
+    elif args.device == "cuda" and torch.cuda.is_available() and not mamba_cuda_path_ready:
+        logger.warning(
+            "Mamba CUDA fast path chua san sang (causal_conv1d/selective_scan_cuda missing). "
+            "Neu tiep tuc dung CUDA, model se chay selective_scan_ref cham hon nhieu."
+        )
+    elif args.device == "cuda" and torch.cuda.is_available() and mamba_cuda_path_ready and not mamba_fastpath_ready:
+        logger.warning(
+            "Mamba fused fast path thieu causal_conv1d fwd/bwd function; se dung CUDA non-fused path thay the."
+        )
+
     device      = resolve_device(args.device)
     pin_memory  = device.type == "cuda"
     use_amp     = args.amp and device.type == "cuda"
     loader_kwargs = dict(batch_size=args.batch_size, num_workers=args.num_workers, pin_memory=pin_memory)
 
-    train_loader = DataLoader(AQIDataset(train), shuffle=False, **loader_kwargs)
+    train_loader = DataLoader(AQIDataset(train), shuffle=True, **loader_kwargs)
     val_loader   = DataLoader(AQIDataset(val),   shuffle=False, **loader_kwargs)
     test_loader  = DataLoader(AQIDataset(test),  shuffle=False, **loader_kwargs)
+    if len(train_loader) < 10:
+        logger.warning(
+            "Train loader chi co %d batch/epoch. Ket qua co the kem on dinh; nen tang khoang ngay train "
+            "hoac giam batch_size neu dang debug.",
+            len(train_loader),
+        )
 
     # Model
     model = TimeSeriesMambaRegressor(
@@ -805,13 +1029,29 @@ def main() -> None:
         d_model=args.d_model,
         n_layers=args.n_layers,
         horizon=args.horizon,
+        dropout=args.dropout,
     ).to(device)
     logger.info("Model input: pure time-series features only; location embedding disabled.")
 
     criterion = nn.HuberLoss(delta=1.0) if args.loss == "huber" else nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=args.lr_factor,
+        patience=args.lr_patience,
+        threshold=args.min_delta,
+        threshold_mode="abs",
+        min_lr=args.min_lr,
+    )
 
     logger.info("Device: %s | AMP: %s | grad_accum: %d", device, use_amp, args.grad_accum_steps)
+    logger.info(
+        "LR scheduler: ReduceLROnPlateau monitor=val_loss patience=%d factor=%.3f min_lr=%.2e",
+        args.lr_patience,
+        args.lr_factor,
+        args.min_lr,
+    )
     if device.type == "cuda":
         logger.info("GPU: %s", torch.cuda.get_device_name(0))
 
@@ -823,7 +1063,7 @@ def main() -> None:
 
     with open(history_path, "w", newline="", encoding="utf-8") as f:
         csv.writer(f).writerow(
-            ["epoch", "train_loss", "val_loss", "mae", "rmse", "mae_norm", "rmse_norm", "val_r2", "train_sec"]
+            ["epoch", "train_loss", "val_loss", "learning_rate", "mae", "rmse", "mae_norm", "rmse_norm", "val_r2", "train_sec"]
         )
 
     for epoch in range(1, args.epochs + 1):
@@ -832,23 +1072,30 @@ def main() -> None:
             epoch, args.epochs, args.log_interval,
             use_amp, args.grad_accum_steps, args.max_grad_norm,
         )
-        val_metrics = evaluate(model, val_loader, criterion, device, use_amp, y_mean, y_std)
+        val_metrics = evaluate(model, val_loader, criterion, device, use_amp, y_mean, y_std, target_mode, val.y_base)
+        prev_lr = optimizer.param_groups[0]["lr"]
+        scheduler.step(val_metrics["loss"])
+        current_lr = optimizer.param_groups[0]["lr"]
 
         logger.info(
-            "Epoch %02d/%02d | train=%.6f | val_loss=%.6f | mae=%.4f | rmse=%.4f | r2=%.4f | %.1fs",
+            "Epoch %02d/%02d | train=%.6f | val_loss=%.6f | mae=%.4f | rmse=%.4f | r2=%.4f | lr=%.2e | %.1fs",
             epoch, args.epochs,
             train_loss, val_metrics["loss"],
             val_metrics["mae"],
             val_metrics["rmse"],
             val_metrics["r2"],
+            current_lr,
             train_sec,
         )
+        if current_lr < prev_lr:
+            logger.info("ReduceLROnPlateau: val_loss khong cai thien, lr %.2e -> %.2e", prev_lr, current_lr)
 
         with open(history_path, "a", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow([
                 epoch,
                 f"{train_loss:.8f}",
                 f"{val_metrics['loss']:.8f}",
+                f"{current_lr:.12g}",
                 f"{val_metrics['mae']:.8f}",
                 f"{val_metrics['rmse']:.8f}",
                 f"{val_metrics.get('mae_norm', float('nan')):.8f}",
@@ -875,8 +1122,8 @@ def main() -> None:
 
     # Test
     model.load_state_dict(torch.load(best_path, map_location=device))
-    test_metrics = evaluate(model, test_loader, criterion, device, use_amp, y_mean, y_std)
-    test_preds, test_targets = collect_predictions(model, test_loader, device, use_amp, y_mean, y_std)
+    test_metrics = evaluate(model, test_loader, criterion, device, use_amp, y_mean, y_std, target_mode, test.y_base)
+    test_preds, test_targets = collect_predictions(model, test_loader, device, use_amp, y_mean, y_std, target_mode, test.y_base)
     prediction_path = save_prediction_results(
         args.out_dir,
         test,
@@ -915,6 +1162,7 @@ def main() -> None:
         "target_normalization": {
             "method": "standard",
             "fit_on": "train",
+            "target_mode": target_mode,
             "mean": y_mean,
             "std": y_std,
         },
@@ -923,11 +1171,20 @@ def main() -> None:
         "model": {
             "d_model": args.d_model,
             "n_layers": args.n_layers,
+            "dropout": args.dropout,
         },
         "training": {
             "epochs": args.epochs,
             "batch_size": args.batch_size,
             "learning_rate": args.lr,
+            "final_learning_rate": optimizer.param_groups[0]["lr"],
+            "lr_scheduler": {
+                "name": "ReduceLROnPlateau",
+                "monitor": "val_loss",
+                "patience": args.lr_patience,
+                "factor": args.lr_factor,
+                "min_lr": args.min_lr,
+            },
             "device": str(device),
         },
         "created_at": datetime.utcnow().isoformat(),

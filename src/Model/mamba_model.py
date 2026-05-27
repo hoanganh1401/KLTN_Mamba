@@ -25,6 +25,18 @@ except ModuleNotFoundError:
     from .mamba_ssm import Mamba
 
 
+def _fused_fast_path_available() -> bool:
+    try:
+        import mamba_ssm.ops.selective_scan_interface as selective_scan_interface
+    except Exception:
+        return False
+    return (
+        selective_scan_interface.causal_conv1d_fwd_function is not None
+        and selective_scan_interface.causal_conv1d_bwd_function is not None
+        and selective_scan_interface.selective_scan_cuda is not None
+    )
+
+
 class TimeSeriesMambaRegressor(nn.Module):
     """Pure time-series Mamba regressor without location embedding."""
 
@@ -34,13 +46,16 @@ class TimeSeriesMambaRegressor(nn.Module):
         d_model: int = 64,
         n_layers: int = 2,
         horizon: int = 1,
+        dropout: float = 0.0,
     ) -> None:
         super().__init__()
         self.num_features = int(num_features)
         self.horizon = int(horizon)
         self.use_location_embedding = False
+        self.dropout = nn.Dropout(float(dropout))
 
-        use_fast_path = os.environ.get("MAMBA_USE_FASTPATH", "0").lower() in {"1", "true", "yes"}
+        use_fast_path_requested = os.environ.get("MAMBA_USE_FASTPATH", "0").lower() in {"1", "true", "yes"}
+        use_fast_path = use_fast_path_requested and _fused_fast_path_available()
 
         self.input_proj = nn.Linear(self.num_features, d_model)
         self.layers = nn.ModuleList(
@@ -53,6 +68,7 @@ class TimeSeriesMambaRegressor(nn.Module):
         self.head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.GELU(),
+            nn.Dropout(float(dropout)),
             nn.Linear(d_model, self.horizon),
         )
 
@@ -61,6 +77,7 @@ class TimeSeriesMambaRegressor(nn.Module):
         x = self.input_proj(x_seq)
         for layer in self.layers:
             x = layer(x)
+            x = self.dropout(x)
         x = self.norm(x)
         return self.head(x[:, -1, :])
 

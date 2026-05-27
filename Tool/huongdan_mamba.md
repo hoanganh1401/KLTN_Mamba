@@ -81,7 +81,9 @@ Neu train tu ngay nao den ngay nao thi Silver cung phai chay du dung khoang ngay
 cd D:\KLTN\KLTN_Mamba
 .\.venv\Scripts\Activate.ps1
 
-$dates = @("2026-05-20","2026-05-21","2026-05-22","2026-05-23","2026-05-24","2026-05-25")
+$start = [datetime]"2026-01-01"
+$end = [datetime]"2026-05-25"
+$dates = for ($d = $start; $d -le $end; $d = $d.AddDays(1)) { $d.ToString("yyyy-MM-dd") }
 
 foreach ($d in $dates) {
   Write-Host "`n===== SILVER $d ====="
@@ -102,7 +104,7 @@ foreach ($d in $dates) {
 }
 ```
 
-Luu y: config hien tai `seq_len=72`, `pred_len=12`, nen can toi thieu 84 gio du lieu lien tuc de tao sample train. Nen chay toi thieu 4 ngay, thuc te nen chay 30-90 ngay.
+Luu y: config hien tai `seq_len=96`, `pred_len=12`, nen can toi thieu 108 gio du lieu lien tuc moi tao duoc sample. De train Mamba on dinh, nen dung toi thieu 60-180 ngay; train 5-6 ngay se chi co vai chuc sample va rat de cho R2 am.
 
 ## 4) Gold feature engineering
 
@@ -151,14 +153,14 @@ moi tinh -> 1 training dataset rieng -> 1 model rieng -> 1 metrics rieng
 Moi tinh se tao sliding window rieng:
 
 ```text
-X = 72 gio qua khu
+X = 96 gio qua khu
 y = 12 gio AQI tiep theo
 ```
 
 Lenh duoi day tao dataset tung tinh va train tung tinh. `train_mamba_aqi.py` tu tao thu muc tam, train xong upload artifacts len MinIO, roi tu xoa local tam. Khong can truyen `--out-dir`.
 
 ```powershell
-$start = "2026-05-20"
+$start = "2026-01-01"
 $end = "2026-05-25"
 $tag = "20260525"
 

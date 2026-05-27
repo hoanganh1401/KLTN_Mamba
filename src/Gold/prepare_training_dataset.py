@@ -181,9 +181,14 @@ def build_samples(
         values = g[feature_cols].to_numpy(dtype=np.float32)
         targets = g[target_col].to_numpy(dtype=np.float32)
         times = pd.to_datetime(g["time"], utc=True, errors="coerce").dt.tz_convert(None).to_numpy(dtype="datetime64[ns]")
+        time_diffs_h = np.diff(times).astype("timedelta64[h]")
 
         max_start = len(g) - seq_len - pred_len
         for start in range(0, max_start + 1, sample_stride):
+            end = start + seq_len + pred_len
+            if not np.all(time_diffs_h[start : end - 1] == np.timedelta64(1, "h")):
+                quality_stats["non_continuous_hourly_window"] = quality_stats.get("non_continuous_hourly_window", 0) + 1
+                continue
             full_window = g.iloc[start : start + seq_len + pred_len]
             ok, reason = window_quality_status(
                 full_window,
@@ -216,6 +221,16 @@ def build_samples(
     loc_arr = np.asarray(loc_ids, dtype=np.int64)
     ts_arr = np.asarray(y_ts, dtype="datetime64[ns]")
     return x_arr, y_arr, loc_arr, ts_arr, loc_map, quality_stats
+
+
+def target_stats(y: np.ndarray) -> dict[str, float]:
+    arr = np.asarray(y, dtype=np.float32).reshape(-1)
+    return {
+        "mean": float(arr.mean()),
+        "std": float(arr.std()),
+        "min": float(arr.min()),
+        "max": float(arr.max()),
+    }
 
 
 def get_quality_config(project_cfg: dict) -> dict:
@@ -266,6 +281,39 @@ def make_scaler(method: str):
     if method == "minmax":
         return MinMaxScaler()
     return StandardScaler()
+
+
+def add_derived_features(df: pd.DataFrame, features_cfg: dict) -> tuple[pd.DataFrame, list[str]]:
+    lag_cfg = features_cfg.get("lag_features", {}) or {}
+    rolling_cfg = features_cfg.get("rolling_features", {}) or {}
+    lag_cols = [c for c in lag_cfg.get("cols", []) if c in df.columns]
+    lag_hours = [int(h) for h in lag_cfg.get("hours", [])]
+    rolling_cols = [c for c in rolling_cfg.get("cols", []) if c in df.columns]
+    rolling_windows = [int(w) for w in rolling_cfg.get("windows", [])]
+
+    if not lag_cols and not rolling_cols:
+        return df, []
+
+    out = df.sort_values(["location_key", "time"]).copy()
+    added: list[str] = []
+    grouped = out.groupby(out["location_key"].astype(str), sort=False)
+
+    for col in lag_cols:
+        for h in lag_hours:
+            name = f"{col}_lag_{h}h"
+            out[name] = grouped[col].shift(h)
+            added.append(name)
+
+    for col in rolling_cols:
+        series = grouped[col]
+        for w in rolling_windows:
+            mean_name = f"{col}_roll_mean_{w}h"
+            std_name = f"{col}_roll_std_{w}h"
+            out[mean_name] = series.transform(lambda s, win=w: s.rolling(win, min_periods=max(2, win // 2)).mean())
+            out[std_name] = series.transform(lambda s, win=w: s.rolling(win, min_periods=max(2, win // 2)).std().fillna(0.0))
+            added.extend([mean_name, std_name])
+
+    return out, added
 
 
 def apply_scaler(x: np.ndarray, scaler, metric_idx: list[int]) -> np.ndarray:
@@ -328,6 +376,7 @@ def main() -> None:
     else:
         locations = load_locations(args.locations)
     data = collect_gold_features(locations, start_date, end_date)
+    data, derived_features = add_derived_features(data, features_cfg)
 
     cfg = load_processing_config(get_client())
     metric_cols = data_cfg.get("metric_cols") or cfg["metric_cols"]
@@ -345,7 +394,8 @@ def main() -> None:
     if target_col not in metric_cols:
         metric_cols = metric_cols + [target_col]
 
-    feature_cols = metric_cols + [c for c in time_features if c not in metric_cols]
+    scale_cols = metric_cols + [c for c in derived_features if c not in metric_cols]
+    feature_cols = scale_cols + [c for c in time_features if c not in scale_cols]
     feature_cols = [c for c in feature_cols if not c.startswith("_")]
     quality_cfg = get_quality_config(project_cfg)
 
@@ -372,7 +422,12 @@ def main() -> None:
         val_ratio=val_ratio,
     )
 
-    metric_idx = [feature_cols.index(c) for c in metric_cols if c in feature_cols]
+    metric_idx = [feature_cols.index(c) for c in scale_cols if c in feature_cols]
+    target_feature_idx = feature_cols.index(target_col) if target_col in feature_cols else None
+    if target_feature_idx is not None:
+        for split in splits.values():
+            split["y_base"] = split["x"][:, -1, target_feature_idx].astype(np.float32)
+
     scaler = make_scaler(scaling_method)
     fit_data = x_arr if fit_on == "all" else splits["train"]["x"]
     scaler.fit(fit_data.reshape(-1, x_arr.shape[-1])[:, metric_idx])
@@ -397,6 +452,10 @@ def main() -> None:
     upload_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_ts_train.npy", splits["train"]["y_ts"])
     upload_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_ts_val.npy", splits["val"]["y_ts"])
     upload_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_ts_test.npy", splits["test"]["y_ts"])
+    if target_feature_idx is not None:
+        upload_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_base_train.npy", splits["train"]["y_base"].astype(np.float32))
+        upload_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_base_val.npy", splits["val"]["y_base"].astype(np.float32))
+        upload_npy(client, MINIO_GOLD_BUCKET, f"{prefix}/y_base_test.npy", splits["test"]["y_base"].astype(np.float32))
 
     upload_pickle(client, MINIO_GOLD_BUCKET, f"{prefix}/scaler.pkl", scaler)
 
@@ -407,7 +466,9 @@ def main() -> None:
         "target_col": target_col,
         "feature_cols": feature_cols,
         "metric_cols": metric_cols,
+        "scale_cols": scale_cols,
         "time_features": time_features,
+        "derived_features": derived_features,
         "seq_len": seq_len,
         "pred_len": pred_len,
         "sample_stride": sample_stride,
@@ -416,8 +477,18 @@ def main() -> None:
         "test_ratio": test_ratio,
         "scaling_method": scaling_method,
         "scaling_fit_on": fit_on,
+        "target_base": {
+            "feature": target_col,
+            "source": "last_input_timestep",
+            "available": target_feature_idx is not None,
+        },
         "quality_gate": quality_cfg,
         "quality_stats": quality_stats,
+        "target_stats": {
+            "train": target_stats(splits["train"]["y"]),
+            "val": target_stats(splits["val"]["y"]),
+            "test": target_stats(splits["test"]["y"]),
+        },
         "location_to_id": loc_map,
         "locations": sorted(loc_map.keys()),
         "scope": "all_locations" if not args.location_keys else "selected_locations",
@@ -433,6 +504,14 @@ def main() -> None:
     upload_json(client, MINIO_GOLD_BUCKET, f"{prefix}/dataset_metadata.json", metadata)
 
     print(f"✅ Training dataset saved to s3://{MINIO_GOLD_BUCKET}/{prefix}")
+    print(
+        "Dataset shapes: "
+        f"train={metadata['shapes']['X_train']} | "
+        f"val={metadata['shapes']['X_val']} | "
+        f"test={metadata['shapes']['X_test']} | "
+        f"date={metadata['start_date']}..{metadata['end_date']} | "
+        f"seq_len={seq_len} | pred_len={pred_len} | stride={sample_stride}"
+    )
 
 
 if __name__ == "__main__":

@@ -151,8 +151,13 @@ def load_processing_config(client: Minio) -> dict:
     config.setdefault("physical_bounds", _DEFAULT_PHYSICAL_BOUNDS)
     config.setdefault("max_interpolate_gap_h", _DEFAULT_MAX_INTERPOLATE_GAP_H)
     config.setdefault("max_ffill_gap_h", _DEFAULT_MAX_FFILL_GAP_H)
-    config.setdefault("normalization_method", "robust")
+    config.setdefault("normalization_method", "standard")
     config.setdefault("time_features", _DEFAULT_TIME_FEATURES)
+
+    project_cfg = load_project_config(None)
+    scaling_method = str((project_cfg.get("scaling", {}) or {}).get("method", "")).strip().lower()
+    if scaling_method in {"standard", "robust", "minmax"}:
+        config["normalization_method"] = scaling_method
 
     print(
         f"\n📋 Active config:"

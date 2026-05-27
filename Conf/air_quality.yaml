@@ -3,6 +3,7 @@ project:
   target: aqi
   primary_model: mamba
 
+
 data:
   freq: h
   time_col: time
@@ -21,6 +22,7 @@ data:
     - co2
     - aqi
 
+
 features:
   time_features:
     - hour_sin
@@ -30,16 +32,20 @@ features:
     - day_of_week
     - is_weekend
 
+
 dataset:
-  seq_len: 72
+  seq_len: 96
   pred_len: 12
+  sample_stride: 1
   train_ratio: 0.7
   val_ratio: 0.15
   test_ratio: 0.15
 
+
 scaling:
   method: standard
   fit_on: train
+target_mode: absolute
 
 quality:
   hard_fail_cols:
@@ -52,28 +58,49 @@ quality:
   low_coverage_col: _flag_low_coverage
   max_low_coverage_ratio: 0.5
 
+
 model:
   name: mamba
   input_dim: null
   output_dim: 1
   use_location_embedding: false
   d_model: 128
+  n_layers: 2
   d_ff: 256
   dropout: 0.1
+
 
 training:
   batch_size: 64
   learning_rate: 0.0005
-  epochs: 50
-  patience: 5
+  lr_patience: 4
+  lr_factor: 0.5
+  min_lr: 0.00001
+  epochs: 80
+  patience: 10
+  min_delta: 0.0001
+  min_train_samples: 256
+  loss: huber
+  seed: 42
+  num_workers: 0
+  amp: true
+  auto_cpu_for_slow_mamba: true
+  weight_decay: 0.001
+  grad_accum_steps: 1
+  max_grad_norm: 1.0
   device: cuda
+
 
 inference:
   horizon_hours: 12
-  use_latest_hours: 72
+  use_latest_hours: 96
+
 
 minio:
   bronze_bucket: air-quality
   silver_bucket: air-quality-silver
   gold_bucket: air-quality-gold
   artifacts_bucket: air-quality-artifacts
+
+
+

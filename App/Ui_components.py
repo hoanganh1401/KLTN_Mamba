@@ -518,7 +518,10 @@ def render_train_config() -> dict:
             options=feature_options,
             default=default_features,
         )
-        loss_name = st.selectbox("Loss", options=["huber", "mse"], index=0)
+        loss_default = str(training_cfg.get("loss", "huber")).lower()
+        loss_options = ["huber", "mse"]
+        loss_index = loss_options.index(loss_default) if loss_default in loss_options else 0
+        loss_name = st.selectbox("Loss", options=loss_options, index=loss_index)
 
     with conf2:
         window_size = st.number_input(
@@ -559,6 +562,13 @@ def render_train_config() -> dict:
             value=_as_int(training_cfg.get("patience"), 5),
             step=1,
         )
+        early_stop_min_delta = st.number_input(
+            "Min delta",
+            min_value=0.0,
+            max_value=1.0,
+            value=_as_float(training_cfg.get("min_delta"), 0.0),
+            format="%.6f",
+        )
         batch_size = st.number_input(
             "Batch size",
             min_value=8,
@@ -573,7 +583,13 @@ def render_train_config() -> dict:
             value=_as_float(training_cfg.get("learning_rate"), 3e-4),
             format="%.6f",
         )
-        weight_decay = st.number_input("Weight decay", min_value=0.0, max_value=1.0, value=1e-4, format="%.6f")
+        weight_decay = st.number_input(
+            "Weight decay",
+            min_value=0.0,
+            max_value=1.0,
+            value=_as_float(training_cfg.get("weight_decay"), 1e-4),
+            format="%.6f",
+        )
 
     with conf3:
         d_model = st.number_input(
@@ -590,12 +606,31 @@ def render_train_config() -> dict:
             value=_as_int(model_cfg.get("n_layers"), 2),
             step=1,
         )
-        grad_accum_steps = st.number_input("Gradient accumulation", min_value=1, max_value=64, value=1, step=1)
-        max_grad_norm = st.number_input("Max grad norm", min_value=0.0, max_value=100.0, value=1.0, step=0.5)
+        grad_accum_steps = st.number_input(
+            "Gradient accumulation",
+            min_value=1,
+            max_value=64,
+            value=_as_int(training_cfg.get("grad_accum_steps"), 1),
+            step=1,
+        )
+        max_grad_norm = st.number_input(
+            "Max grad norm",
+            min_value=0.0,
+            max_value=100.0,
+            value=_as_float(training_cfg.get("max_grad_norm"), 1.0),
+            step=0.5,
+        )
+        num_workers = st.number_input(
+            "Num workers",
+            min_value=0,
+            max_value=16,
+            value=_as_int(training_cfg.get("num_workers"), 0),
+            step=1,
+        )
 
     run1, run2, run3 = st.columns(3)
     with run1:
-        seed = st.number_input("Seed", min_value=0, max_value=999999, value=42, step=1)
+        seed = st.number_input("Seed", min_value=0, max_value=999999, value=_as_int(training_cfg.get("seed"), 42), step=1)
     with run2:
         st.markdown(" ")
     with run3:
@@ -618,6 +653,7 @@ def render_train_config() -> dict:
         sample_stride=int(sample_stride),
         epochs=int(epochs),
         early_stop_patience=int(early_stop_patience),
+        early_stop_min_delta=float(early_stop_min_delta),
         batch_size=int(batch_size),
         lr=float(lr),
         weight_decay=float(weight_decay),
@@ -625,6 +661,7 @@ def render_train_config() -> dict:
         n_layers=int(n_layers),
         grad_accum_steps=int(grad_accum_steps),
         max_grad_norm=float(max_grad_norm),
+        num_workers=int(num_workers),
         seed=int(seed),
         use_gpu=bool(use_gpu),
     )

@@ -18,9 +18,12 @@ def main() -> None:
     if torch.cuda.is_available():
         print(f"gpu: {torch.cuda.get_device_name(0)}")
     print(f"causal_conv1d_fn: {mamba_simple.causal_conv1d_fn is not None}")
+    print(f"causal_conv1d_fwd_function: {selective_scan_interface.causal_conv1d_fwd_function is not None}")
+    print(f"causal_conv1d_bwd_function: {selective_scan_interface.causal_conv1d_bwd_function is not None}")
     print(f"selective_scan_cuda: {selective_scan_interface.selective_scan_cuda is not None}")
     fast_ready = (
-        mamba_simple.causal_conv1d_fn is not None
+        selective_scan_interface.causal_conv1d_fwd_function is not None
+        and selective_scan_interface.causal_conv1d_bwd_function is not None
         and selective_scan_interface.selective_scan_cuda is not None
     )
     print(f"mamba fused fast path ready: {fast_ready}")

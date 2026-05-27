@@ -29,6 +29,7 @@ class SplitData:
     loc_ids: np.ndarray | None
     y: np.ndarray
     y_ts: np.ndarray | None = None
+    y_base: np.ndarray | None = None
 
 
 class AQIDataset(Dataset):

@@ -48,6 +48,7 @@ def build_mamba_model(
     d_model: int = 64,
     n_layers: int = 2,
     horizon: int = 1,
+    dropout: float = 0.0,
 ) -> torch.nn.Module:
     """Create the pure time-series Mamba regressor used by training."""
     return TimeSeriesMambaRegressor(
@@ -55,6 +56,7 @@ def build_mamba_model(
         d_model=d_model,
         n_layers=n_layers,
         horizon=horizon,
+        dropout=dropout,
     )
 
 
@@ -76,6 +78,7 @@ def load_mamba_model(
     dm = d_model or metadata.get("d_model") or model_cfg.get("d_model") or 64
     layers = n_layers or metadata.get("n_layers") or model_cfg.get("n_layers") or 2
     hz = horizon or metadata.get("horizon") or model_cfg.get("horizon") or 1
+    dropout = float(model_cfg.get("dropout", metadata.get("dropout", 0.0)) or 0.0)
 
     if nf is None:
         raise ValueError("num_features is required when metadata does not provide it.")
@@ -86,6 +89,7 @@ def load_mamba_model(
         d_model=int(dm),
         n_layers=int(layers),
         horizon=int(hz),
+        dropout=dropout,
     )
 
     state = torch.load(Path(checkpoint_path), map_location=target_device)

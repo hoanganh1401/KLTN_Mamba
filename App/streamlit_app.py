@@ -95,13 +95,13 @@ def main() -> None:
                 n_layers=train_cfg["n_layers"],
                 loss_name=train_cfg["loss_name"],
                 seed=train_cfg["seed"],
-                num_workers=4,
+                num_workers=train_cfg["num_workers"],
                 use_gpu=train_cfg["use_gpu"],
                 log_interval=50,
                 grad_accum_steps=train_cfg["grad_accum_steps"],
                 max_grad_norm=train_cfg["max_grad_norm"],
                 early_stop_patience=train_cfg["early_stop_patience"],
-                early_stop_min_delta=0.0,
+                early_stop_min_delta=train_cfg["early_stop_min_delta"],
                 run_dir=mamba_run_dir,
             )
 

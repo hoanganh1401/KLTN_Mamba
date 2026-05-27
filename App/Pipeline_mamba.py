@@ -103,6 +103,9 @@ def train_pipeline(
     max_grad_norm: float,
     early_stop_patience: int,
     early_stop_min_delta: float,
+    lr_scheduler_patience: int = 2,
+    lr_scheduler_factor: float = 0.5,
+    min_lr: float = 1e-6,
     run_dir: str | None = None,
     forecast_file_name: str = "future_24h_predictions.csv",
 ) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
@@ -211,6 +214,15 @@ def train_pipeline(
 
     criterion = nn.HuberLoss(delta=1.0) if loss_name == "huber" else nn.MSELoss()
     optimizer = torch.optim.AdamW(raw_model.parameters(), lr=lr, weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=lr_scheduler_factor,
+        patience=lr_scheduler_patience,
+        threshold=early_stop_min_delta,
+        threshold_mode="abs",
+        min_lr=min_lr,
+    )
 
     best_val_loss = float("inf")
     best_state = None
@@ -279,15 +291,20 @@ def train_pipeline(
 
         train_loss = running_loss / len(train_loader.dataset)
         val_metrics = mod.evaluate(model, val_loader, criterion, device, amp_enabled, y_mean, y_std)
+        prev_lr = optimizer.param_groups[0]["lr"]
+        scheduler.step(val_metrics["loss"])
+        current_lr = optimizer.param_groups[0]["lr"]
         epoch_sec = time.time() - epoch_start
 
         epoch_line = (
             f"Epoch {epoch}/{epochs} done | train_loss={train_loss:.6f} | "
             f"val_loss={val_metrics['loss']:.6f} | mae={val_metrics.get('mae_norm', float('nan')):.4f} | "
             f"rmse={val_metrics.get('rmse_norm', float('nan')):.4f} | val_r2={val_metrics['r2']:.4f} | "
-            f"sec={epoch_sec:.1f}"
+            f"lr={current_lr:.2e} | sec={epoch_sec:.1f}"
         )
         log_lines.append(epoch_line)
+        if current_lr < prev_lr:
+            log_lines.append(f"ReduceLROnPlateau: val_loss khong cai thien, lr {prev_lr:.2e} -> {current_lr:.2e}")
         log_box.code("\n".join(log_lines[-20:]))
 
         history.append(
@@ -295,6 +312,7 @@ def train_pipeline(
                 "epoch": epoch,
                 "train_loss": train_loss,
                 "val_loss": val_metrics["loss"],
+                "learning_rate": current_lr,
                 "mae": val_metrics.get("mae_norm"),
                 "rmse": val_metrics.get("rmse_norm"),
                 "val_r2": val_metrics["r2"],
@@ -488,6 +506,15 @@ def train_pipeline(
         "epochs_ran": len(history),
         "stopped_early": stopped_early,
         "best_val_loss": float(best_val_loss),
+        "initial_learning_rate": float(lr),
+        "final_learning_rate": float(optimizer.param_groups[0]["lr"]),
+        "lr_scheduler": {
+            "name": "ReduceLROnPlateau",
+            "monitor": "val_loss",
+            "patience": int(lr_scheduler_patience),
+            "factor": float(lr_scheduler_factor),
+            "min_lr": float(min_lr),
+        },
         "train_only_sec": float(pd.DataFrame(history)["train_sec"].sum()) if history else 0.0,
         "eval_sec": float(eval_sec),
         "forecast_sec": float(forecast_sec),

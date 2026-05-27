@@ -153,6 +153,33 @@ def get_quality_config(project_cfg: dict, metadata: dict) -> dict:
     }
 
 
+def add_derived_features(df: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+    derived_features = metadata.get("derived_features") or []
+    if not derived_features:
+        return df
+
+    out = df.sort_values(["location_key", "time"]).copy()
+    grouped = out.groupby(out["location_key"].astype(str), sort=False)
+
+    for name in derived_features:
+        if "_lag_" in name and name.endswith("h"):
+            col, lag_part = name.rsplit("_lag_", 1)
+            if col in out.columns:
+                out[name] = grouped[col].shift(int(lag_part[:-1]))
+        elif "_roll_mean_" in name and name.endswith("h"):
+            col, win_part = name.rsplit("_roll_mean_", 1)
+            if col in out.columns:
+                win = int(win_part[:-1])
+                out[name] = grouped[col].transform(lambda s, w=win: s.rolling(w, min_periods=max(2, w // 2)).mean())
+        elif "_roll_std_" in name and name.endswith("h"):
+            col, win_part = name.rsplit("_roll_std_", 1)
+            if col in out.columns:
+                win = int(win_part[:-1])
+                out[name] = grouped[col].transform(lambda s, w=win: s.rolling(w, min_periods=max(2, w // 2)).std().fillna(0.0))
+
+    return out
+
+
 def apply_scaler(x: np.ndarray, scaler, metric_idx: list[int]) -> np.ndarray:
     flat = x.reshape(-1, x.shape[-1])
     flat[:, metric_idx] = scaler.transform(flat[:, metric_idx])
@@ -195,7 +222,7 @@ def main() -> None:
     default_seq = inference_cfg.get("use_latest_hours") or dataset_cfg.get("seq_len")
     seq_len = args.seq_len or int(meta.get("seq_len", default_seq or 96))
     feature_cols = meta.get("feature_cols", [])
-    metric_cols = meta.get("metric_cols", [])
+    metric_cols = meta.get("scale_cols") or meta.get("metric_cols", [])
     quality_cfg = get_quality_config(project_cfg, meta)
 
     if not feature_cols or not metric_cols:
@@ -214,10 +241,14 @@ def main() -> None:
     start_date = end_date - timedelta(days=max(1, args.lookback_days) - 1)
 
     data = collect_recent_features(location_keys, start_date, end_date)
+    data = add_derived_features(data, meta)
 
     metric_idx = [feature_cols.index(c) for c in metric_cols if c in feature_cols]
+    target_col = meta.get("target_col", "aqi")
+    target_feature_idx = feature_cols.index(target_col) if target_col in feature_cols else None
 
     x_batches: list[np.ndarray] = []
+    y_bases: list[float] = []
     used_locations: list[str] = []
     ranges: dict[str, dict[str, str]] = {}
     skipped_locations: dict[str, str] = {}
@@ -252,6 +283,8 @@ def main() -> None:
             skipped_locations[str(loc)] = "nan_feature"
             continue
 
+        if target_feature_idx is not None:
+            y_bases.append(float(x[-1, target_feature_idx]))
         x = apply_scaler(x.reshape(1, seq_len, -1), scaler, metric_idx)
 
         x_batches.append(x[0])
@@ -277,11 +310,13 @@ def main() -> None:
         )
 
     x_infer = np.stack(x_batches, axis=0)
+    y_base_infer = np.asarray(y_bases, dtype=np.float32) if y_bases else np.zeros((len(x_batches),), dtype=np.float32)
 
     run_id = args.output_run_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     out_prefix = f"inference_input/run_id={run_id}"
 
     upload_npy(client, MINIO_GOLD_BUCKET, f"{out_prefix}/X_inference.npy", x_infer.astype(np.float32))
+    upload_npy(client, MINIO_GOLD_BUCKET, f"{out_prefix}/y_base_inference.npy", y_base_infer.astype(np.float32))
     upload_json(
         client,
         MINIO_GOLD_BUCKET,

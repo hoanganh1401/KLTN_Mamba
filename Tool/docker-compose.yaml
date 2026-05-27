@@ -88,6 +88,7 @@ x-airflow-common:
   volumes:
     - ../Airflow/dags:/opt/Project/Airflow/dags
     - ../Airflow/config:/opt/Project/Airflow/config
+    - ../Conf:/opt/Project/Conf
     - ../DataSet:/opt/Project/Dataset
     - ../src/Silver:/opt/Project/src/Silver
     - ../src/Gold:/opt/Project/src/Gold
@@ -452,6 +453,14 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - MAMBA_USE_FASTPATH=1
+      - MINIO_HOST=${MINIO_HOST:-minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-admin123}
+      - MINIO_BUCKET=${MINIO_BUCKET:-air-quality}
+      - MINIO_SILVER_BUCKET=${MINIO_SILVER_BUCKET:-air-quality-silver}
+      - MINIO_GOLD_BUCKET=${MINIO_GOLD_BUCKET:-air-quality-gold}
+      - MINIO_ARTIFACTS_BUCKET=${MINIO_ARTIFACTS_BUCKET:-air-quality-artifacts}
+      - MINIO_SECURE=${MINIO_SECURE:-false}
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     gpus: all

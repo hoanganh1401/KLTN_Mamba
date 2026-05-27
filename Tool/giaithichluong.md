@@ -728,8 +728,10 @@ Ví dụ chạy từ `2026-05-20` đến `2026-05-25` theo đúng yêu cầu m�
 cd D:\KLTN\KLTN_Mamba
 .\.venv\Scripts\Activate.ps1
 
-$dates = @("2026-05-20","2026-05-21","2026-05-22","2026-05-23","2026-05-24","2026-05-25")
-$start = "2026-05-20"
+$dateStart = [datetime]"2026-01-01"
+$dateEnd = [datetime]"2026-05-25"
+$dates = for ($d = $dateStart; $d -le $dateEnd; $d = $d.AddDays(1)) { $d.ToString("yyyy-MM-dd") }
+$start = "2026-01-01"
 $end = "2026-05-25"
 $tag = "20260525"
 
