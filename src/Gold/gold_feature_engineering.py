@@ -130,6 +130,7 @@ def run_feature_engineering(
     target_date_str: str,
     config_path: str | None = None,
     location_keys: list[str] | None = None,
+    disable_time_features: bool = False,
 ) -> None:
     target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
     client = get_client()
@@ -142,6 +143,11 @@ def run_feature_engineering(
         cfg["metric_cols"] = data_cfg["metric_cols"]
     if features_cfg.get("time_features"):
         cfg["time_features"] = features_cfg["time_features"]
+
+    if disable_time_features:
+        # allow disabling time features for A/B testing / debugging
+        print("  [INFO] Time features disabled by flag; skipping generation")
+        cfg["time_features"] = []
 
     if location_keys:
         locations = [{"location_key": key} for key in location_keys]
@@ -179,11 +185,19 @@ def main() -> None:
     parser.add_argument("--location-keys", default=None, help="Comma-separated province keys, e.g. an_giang")
     parser.add_argument("--date", default=None, help="YYYY-MM-DD (default: yesterday)")
     parser.add_argument("--config", default=None, help="Path to project YAML config")
+    parser.add_argument(
+        "--no-time-features",
+        dest="no_time_features",
+        action="store_true",
+        help="Disable generation of time/cyclic features (for ab testing)",
+    )
     args = parser.parse_args()
 
     target = args.date or (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
     location_keys = [x.strip() for x in args.location_keys.split(",") if x.strip()] if args.location_keys else None
-    run_feature_engineering(args.locations, target, args.config, location_keys)
+    run_feature_engineering(
+        args.locations, target, args.config, location_keys, disable_time_features=args.no_time_features
+    )
 
 
 if __name__ == "__main__":

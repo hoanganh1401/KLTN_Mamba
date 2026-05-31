@@ -125,6 +125,7 @@ def build_time_series_samples(
     num_locations: int
     feature_cols : list[str] — tên các cột feature được dùng
     """
+
     # Validate — auto-detect timestamp column (case-insensitive)
     col_map = {c.lower(): c for c in df.columns}
     if "ts_utc" in col_map:
@@ -817,6 +818,8 @@ def main() -> None:
     parser.add_argument("--lr-factor",        type=float, default=0.5)
     parser.add_argument("--min-lr",           type=float, default=1e-6)
     parser.add_argument("--auto-cpu-for-slow-mamba", action="store_true")
+    parser.add_argument("--no-auto-cpu-for-slow-mamba", dest="auto_cpu_for_slow_mamba", action="store_false")
+    parser.add_argument("--force-gpu", action="store_true", help="Force use of CUDA device even if fast kernels are missing")
     parser.add_argument("--forecast-24h",     action="store_true", help="Generate next-24h forecast CSV")
     parser.add_argument("--forecast-base",    type=str,   default=None, help="CSV path for forecast base (optional)")
     parser.add_argument("--forecast-out",     type=str,   default=None)
@@ -855,6 +858,7 @@ def main() -> None:
         training_cfg.get("auto_cpu_for_slow_mamba"),
         args.auto_cpu_for_slow_mamba,
     )
+    args.force_gpu = _cfg_bool(training_cfg.get("force_gpu"), getattr(args, "force_gpu", False))
     args.device = str(training_cfg.get("device", args.device))
     args.d_model = int(model_cfg.get("d_model", args.d_model))
     args.n_layers = int(model_cfg.get("n_layers", args.n_layers))
@@ -985,12 +989,15 @@ def main() -> None:
     # DataLoaders
     mamba_fastpath_ready = _mamba_fastpath_ready()
     mamba_cuda_path_ready = _mamba_cuda_path_ready()
+    if getattr(args, "force_gpu", False) and not torch.cuda.is_available():
+        raise RuntimeError("--force-gpu set but no CUDA device available (torch.cuda.is_available() is False)")
     if (
         args.auto_cpu_for_slow_mamba
         and args.device == "cuda"
         and torch.cuda.is_available()
         and not mamba_cuda_path_ready
         and len(train.y) < 1024
+        and not getattr(args, "force_gpu", False)
     ):
         logger.warning(
             "Mamba CUDA fast path chua san sang (causal_conv1d/selective_scan_cuda missing) va dataset nho. "
@@ -1003,10 +1010,26 @@ def main() -> None:
             "Mamba CUDA fast path chua san sang (causal_conv1d/selective_scan_cuda missing). "
             "Neu tiep tuc dung CUDA, model se chay selective_scan_ref cham hon nhieu."
         )
+        if getattr(args, "force_gpu", False):
+            logger.warning("--force-gpu set: forcing CUDA execution despite missing fast kernels (may be very slow).")
     elif args.device == "cuda" and torch.cuda.is_available() and mamba_cuda_path_ready and not mamba_fastpath_ready:
         logger.warning(
             "Mamba fused fast path thieu causal_conv1d fwd/bwd function; se dung CUDA non-fused path thay the."
         )
+
+    # Debug and enforce device when user requests forced-GPU
+    logger.info(
+        "Device selection debug | args.device=%s | force_gpu=%s | cuda_available=%s | mamba_cuda_path_ready=%s | mamba_fastpath_ready=%s",
+        args.device,
+        getattr(args, "force_gpu", False),
+        torch.cuda.is_available(),
+        mamba_cuda_path_ready,
+        mamba_fastpath_ready,
+    )
+    if getattr(args, "force_gpu", False) and torch.cuda.is_available():
+        # Force CUDA regardless of earlier warnings/auto-fallback decisions
+        args.device = "cuda"
+        logger.info("--force-gpu set: forcing args.device='cuda'")
 
     device      = resolve_device(args.device)
     pin_memory  = device.type == "cuda"

@@ -157,11 +157,19 @@ def build_samples(
     low_coverage_col: str,
     max_low_coverage_ratio: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, int], dict[str, int]]:
-    missing_cols = [c for c in ["time", target_col] + feature_cols if c not in df.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
+    # Ensure required base columns exist (time and target). Feature columns are optional
+    base_required = ["time", target_col]
+    missing_base = [c for c in base_required if c not in df.columns]
+    if missing_base:
+        raise ValueError(f"Missing required columns: {missing_base}")
 
-    df = df.dropna(subset=feature_cols + [target_col, "time"]).copy()
+    # Filter to only feature columns present in the DataFrame. If some are missing,
+    # continue with the ones available (allows running with/without time features).
+    present_feature_cols = [c for c in feature_cols if c in df.columns]
+    if len(present_feature_cols) != len(feature_cols):
+        print(f"[WARN] Some feature columns missing, proceeding with: {present_feature_cols}", file=sys.stderr)
+
+    df = df.dropna(subset=present_feature_cols + [target_col, "time"]).copy()
 
     location_keys = sorted(df["location_key"].astype(str).unique().tolist())
     loc_map = {loc: idx for idx, loc in enumerate(location_keys)}
@@ -178,7 +186,9 @@ def build_samples(
         if len(g) < seq_len + pred_len:
             continue
 
-        values = g[feature_cols].to_numpy(dtype=np.float32)
+        # If no feature columns are present, values will be an array with shape (n, 0)
+        # which is handled downstream (model may accept pure time-series or only lags).
+        values = g[present_feature_cols].to_numpy(dtype=np.float32) if present_feature_cols else np.zeros((len(g), 0), dtype=np.float32)
         targets = g[target_col].to_numpy(dtype=np.float32)
         times = pd.to_datetime(g["time"], utc=True, errors="coerce").dt.tz_convert(None).to_numpy(dtype="datetime64[ns]")
         time_diffs_h = np.diff(times).astype("timedelta64[h]")
