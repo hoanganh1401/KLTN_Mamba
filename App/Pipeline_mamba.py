@@ -26,6 +26,7 @@ from Utils import (
     format_time_utc_strings,
     load_train_module,
     normalize_locations,
+    parse_time_local,
     split_data_by_timeline,
 )
 
@@ -348,9 +349,9 @@ def train_pipeline(
     # --- Build province mapping for output/inference metadata only ---
     cleaned = work_df.copy()
     clean_col_map = {c.lower(): c for c in cleaned.columns}
-    ts_col = clean_col_map.get("time") or clean_col_map.get("ts_utc") or clean_col_map.get("timestamp")
+    ts_col = clean_col_map.get("time") or clean_col_map.get("timestamp") or clean_col_map.get("ts_utc")
     eval_sec = time.time() - eval_start
-    cleaned["_ts"] = pd.to_datetime(cleaned[ts_col], utc=True, errors="coerce")
+    cleaned["_ts"] = parse_time_local(cleaned[ts_col])
     cleaned = cleaned.dropna(subset=["_ts", "location_key", target_col]).copy()
     cleaned["_loc_id"] = cleaned["location_key"].astype("category").cat.codes.astype(np.int64)
     loc_to_id = (
@@ -372,11 +373,11 @@ def train_pipeline(
         raise ValueError("Test CSV khÃ´ng cÃ³ location trÃ¹ng vá»›i dá»¯ liá»‡u train Ä‘Ã£ chá»n.")
 
     base_col_map = {c.lower(): c for c in base_df.columns}
-    base_ts_col = base_col_map.get("ts_utc") or base_col_map.get("time") or base_col_map.get("timestamp") or "_ts"
+    base_ts_col = base_col_map.get("time") or base_col_map.get("timestamp") or base_col_map.get("ts_utc") or "_ts"
     if base_ts_col not in base_df.columns:
         raise ValueError("Cáº§n cÃ³ cá»™t timestamp ('ts_utc', 'Time', hoáº·c 'timestamp') Ä‘á»ƒ dá»± bÃ¡o 24h tiáº¿p theo.")
-    if base_ts_col != "ts_utc":
-        base_df["ts_utc"] = base_df[base_ts_col]
+    if base_ts_col != "time":
+        base_df["time"] = base_df[base_ts_col]
 
     for col in ts_feature_cols:
         if col not in base_df.columns:
@@ -410,9 +411,9 @@ def train_pipeline(
             loc_hist = (
                 base_df.loc[base_df["location_key"].astype(str) == loc]
                 .copy()
-                .assign(ts_utc=lambda d: pd.to_datetime(d["ts_utc"], utc=True, errors="coerce"))
-                .dropna(subset=["ts_utc"])
-                .sort_values("ts_utc")
+                .assign(time=lambda d: parse_time_local(d["time"]))
+                .dropna(subset=["time"])
+                .sort_values("time")
             )
             if len(loc_hist) < window_size:
                 continue
@@ -421,14 +422,14 @@ def train_pipeline(
             loc_future = (
                 future_df.loc[future_df["location_key"].astype(str) == loc]
                 .copy()
-                .assign(ts_utc=lambda d: pd.to_datetime(d["ts_utc"], utc=True, errors="coerce"))
-                .sort_values("ts_utc")
+                .assign(time=lambda d: parse_time_local(d["time"]))
+                .sort_values("time")
             )
 
             for _, row in loc_future.iterrows():
                 x_norm = (rolling_window - x_mean_2d) / x_std_2d
                 infer_x.append(x_norm.astype(np.float32, copy=False))
-                infer_meta.append((row["ts_utc"], loc))
+                infer_meta.append((row["time"], loc))
                 next_feats = row[ts_feature_cols].to_numpy(dtype=np.float32).reshape(1, -1)
                 rolling_window = np.concatenate([rolling_window[1:], next_feats], axis=0)
 

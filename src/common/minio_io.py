@@ -38,6 +38,11 @@ except ImportError:
         MINIO_SILVER_BUCKET,
     )
 
+try:
+    from .time_utils import parse_time_local
+except ImportError:
+    from time_utils import parse_time_local
+
 
 def get_client() -> Minio:
     return Minio(
@@ -107,7 +112,7 @@ def load_csv_object(client: Minio, bucket: str, path: str) -> pd.DataFrame | Non
                     df = df.rename(columns={col: "time"})
                     break
         if "time" in df.columns:
-            df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+            df["time"] = parse_time_local(df["time"])
         return df
     except Exception as exc:
         print(f"  [WARN] Object not found: s3://{bucket}/{path} — {exc}")

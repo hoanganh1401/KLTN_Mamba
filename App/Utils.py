@@ -12,6 +12,22 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+try:
+    from src.common.time_utils import format_time_local_strings, parse_time_local
+except Exception:
+    from zoneinfo import ZoneInfo
+
+    _LOCAL_TZ = "Asia/Ho_Chi_Minh"
+
+    def parse_time_local(values) -> pd.Series:
+        ts = pd.to_datetime(values, errors="coerce")
+        if getattr(ts.dt, "tz", None) is None:
+            return ts.dt.tz_localize(_LOCAL_TZ, nonexistent="shift_forward", ambiguous="NaT")
+        return ts.dt.tz_convert(_LOCAL_TZ)
+
+    def format_time_local_strings(values) -> pd.Series:
+        return parse_time_local(values).dt.strftime("%Y-%m-%d %H:%M:%S+07:00")
+
 
 # ---------------------------------------------------------------------------
 # Normalize / format helpers
@@ -30,24 +46,23 @@ def normalize_locations(value) -> list[str]:
 
 
 def format_time_utc_strings(values: pd.Series) -> pd.Series:
-    """Format datetimes as YYYY-MM-DD HH:MM:SS+00:00 in UTC."""
-    ts = pd.to_datetime(values, utc=True, errors="coerce")
-    return ts.dt.strftime("%Y-%m-%d %H:%M:%S+00:00")
+    """Backward-compatible alias: format datetimes as Vietnam local time."""
+    return format_time_local_strings(values)
 
 
 def synthesize_tft_time_from_dataset(repo_root: Path, locations: pd.Series) -> pd.Series:
-    """Táº¡o hourly UTC timestamps per location khi TFT output khÃ´ng cÃ³ time column."""
+    """Táº¡o hourly local timestamps per location khi TFT output khÃ´ng cÃ³ time column."""
     dataset_path = repo_root / "dataset" / "2025.csv"
     loc_series = locations.astype(str).reset_index(drop=True)
     out = pd.Series(index=loc_series.index, dtype="object")
 
     base_map: dict[str, pd.Timestamp] = {}
-    global_base = pd.Timestamp("2025-01-01 00:00:00", tz="UTC")
+    global_base = pd.Timestamp("2025-01-01 00:00:00", tz="Asia/Ho_Chi_Minh")
 
     if dataset_path.exists():
         try:
             src = pd.read_csv(dataset_path, usecols=["location_key", "ts_utc"])
-            src["ts_utc"] = pd.to_datetime(src["ts_utc"], utc=True, errors="coerce")
+            src["ts_utc"] = parse_time_local(src["ts_utc"])
             src = src.dropna(subset=["location_key", "ts_utc"]).copy()
             if not src.empty:
                 max_per_loc = src.groupby(src["location_key"].astype(str))["ts_utc"].max()
@@ -60,8 +75,8 @@ def synthesize_tft_time_from_dataset(repo_root: Path, locations: pd.Series) -> p
     for loc, idx in loc_series.groupby(loc_series).groups.items():
         idx_list = list(idx)
         start = base_map.get(str(loc), global_base)
-        rng = pd.date_range(start=start, periods=len(idx_list), freq="h", tz="UTC")
-        out.loc[idx_list] = rng.strftime("%Y-%m-%d %H:%M:%S+00:00")
+        rng = pd.date_range(start=start, periods=len(idx_list), freq="h", tz="Asia/Ho_Chi_Minh")
+        out.loc[idx_list] = rng.strftime("%Y-%m-%d %H:%M:%S+07:00")
 
     return out
 
@@ -129,34 +144,34 @@ def build_future_24h_frame(
     """Táº¡o DataFrame dá»± bÃ¡o hours tiáº¿p theo tá»« ngÃ y cuá»‘i trong df_valid."""
     normalized = df_valid.copy()
     col_map = {c.lower(): c for c in normalized.columns}
-    ts_col = col_map.get("ts_utc") or col_map.get("time") or col_map.get("timestamp")
+    ts_col = col_map.get("time") or col_map.get("timestamp") or col_map.get("ts_utc")
     if ts_col is None:
         raise ValueError("Cáº§n cÃ³ cá»™t timestamp ('ts_utc', 'Time', hoáº·c 'timestamp') Ä‘á»ƒ dá»± bÃ¡o tiáº¿p theo.")
-    if ts_col != "ts_utc":
-        normalized["ts_utc"] = normalized[ts_col]
+    if ts_col != "time":
+        normalized["time"] = normalized[ts_col]
     df_valid = normalized
 
-    if "ts_utc" not in df_valid.columns:
-        raise ValueError("Cáº§n cÃ³ cá»™t 'ts_utc' Ä‘á»ƒ dá»± bÃ¡o tiáº¿p theo.")
+    if "time" not in df_valid.columns:
+        raise ValueError("Cáº§n cÃ³ cá»™t 'time' Ä‘á»ƒ dá»± bÃ¡o tiáº¿p theo.")
 
     work = df_valid.copy()
-    work["ts_utc"] = pd.to_datetime(work["ts_utc"], utc=True, errors="coerce")
-    work = work.dropna(subset=["ts_utc"]).copy()
+    work["time"] = parse_time_local(work["time"])
+    work = work.dropna(subset=["time"]).copy()
 
     future_rows = []
     if "location_key" in work.columns:
         groups = [
-            (loc, work.loc[work["location_key"].astype(str) == loc].sort_values("ts_utc").copy())
+            (loc, work.loc[work["location_key"].astype(str) == loc].sort_values("time").copy())
             for loc in sorted(work["location_key"].dropna().astype(str).unique().tolist())
         ]
     else:
-        groups = [(None, work.sort_values("ts_utc").copy())]
+        groups = [(None, work.sort_values("time").copy())]
 
     for loc, g in groups:
         if g.empty:
             continue
 
-        last_ts = g["ts_utc"].iloc[-1]
+        last_ts = g["time"].iloc[-1]
         next_day_start = last_ts.normalize() + pd.Timedelta(days=1)
         template = g.tail(hours).copy()
         if len(template) < hours:
@@ -169,7 +184,7 @@ def build_future_24h_frame(
             row = {col: src[col] for col in feature_cols if col in template.columns}
             if loc is not None:
                 row["location_key"] = loc
-            row["ts_utc"] = next_day_start + pd.Timedelta(hours=h)
+            row["time"] = next_day_start + pd.Timedelta(hours=h)
             row[target_col] = np.nan
             future_rows.append(row)
 

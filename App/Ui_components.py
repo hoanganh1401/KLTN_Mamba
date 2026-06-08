@@ -26,7 +26,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     yaml = None
 
-from Utils import load_train_module, split_data_by_timeline
+from Utils import format_time_utc_strings, load_train_module, parse_time_local, split_data_by_timeline
 
 # ThÆ° má»¥c lÆ°u táº¡m file upload (náº±m cáº¡nh app/)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -110,7 +110,7 @@ def _load_gold_features_minio(
             if "location_key" not in df.columns:
                 df["location_key"] = df.get("location", loc)
             if "time" in df.columns:
-                df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+                df["time"] = parse_time_local(df["time"])
             frames.append(df)
 
     if not frames:
@@ -120,12 +120,8 @@ def _load_gold_features_minio(
     combined = combined.dropna(subset=["time"]).copy()
     combined = combined.sort_values(["location_key", "time"]).reset_index(drop=True)
 
-    if "ts_utc" not in combined.columns and "time" in combined.columns:
-        combined["ts_utc"] = combined["time"]
-    if "Time" not in combined.columns and "ts_utc" in combined.columns:
-        combined["Time"] = pd.to_datetime(combined["ts_utc"], utc=True, errors="coerce").dt.strftime(
-            "%Y-%m-%d %H:%M:%S+00:00"
-        )
+    if "Time" not in combined.columns and "time" in combined.columns:
+        combined["Time"] = format_time_utc_strings(combined["time"])
 
     return combined
 
@@ -249,7 +245,7 @@ def render_sidebar() -> tuple[str, str, object | None]:
                 )
                 minio_locations = [x.strip() for x in loc_text.split(",") if x.strip()]
 
-            end_default = datetime.utcnow().date()
+            end_default = datetime.now().date()
             start_default = end_default - timedelta(days=30)
             start_date = st.date_input("Start date", value=start_default)
             end_date = st.date_input("End date", value=end_default)
@@ -449,7 +445,7 @@ def _render_sample_count_preview(
             return
 
         col_map = {c.lower(): c for c in df_sel.columns}
-        ts_col = col_map.get("ts_utc") or col_map.get("time") or col_map.get("timestamp")
+        ts_col = col_map.get("time") or col_map.get("timestamp") or col_map.get("ts_utc")
         exclude_cols = [c for c in [ts_col, col_map.get("location_key") or "location_key"] if c]
         feature_cols = [c for c in df_sel.columns if c not in exclude_cols]
         if default_target not in feature_cols:

@@ -33,6 +33,7 @@ from common.minio_io import (
     upload_json,
     upload_npy,
 )
+from common.time_utils import now_local, parse_time_local
 
 DEFAULT_HARD_FAIL_COLS = [
     "_invalid_segment",
@@ -71,7 +72,7 @@ def normalize_time_column(df: pd.DataFrame) -> pd.DataFrame:
                 df = df.rename(columns={col: "time"})
                 break
     if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df["time"] = parse_time_local(df["time"])
     return df
 
 
@@ -236,7 +237,7 @@ def main() -> None:
             for loc in load_locations(args.locations)
         ]
 
-    end_default = datetime.utcnow().date()
+    end_default = now_local().date()
     end_date = parse_date(args.end_date, end_default)
     start_date = end_date - timedelta(days=max(1, args.lookback_days) - 1)
 
@@ -312,7 +313,7 @@ def main() -> None:
     x_infer = np.stack(x_batches, axis=0)
     y_base_infer = np.asarray(y_bases, dtype=np.float32) if y_bases else np.zeros((len(x_batches),), dtype=np.float32)
 
-    run_id = args.output_run_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_id = args.output_run_id or now_local().strftime("%Y%m%d_%H%M%S")
     out_prefix = f"inference_input/run_id={run_id}"
 
     upload_npy(client, MINIO_GOLD_BUCKET, f"{out_prefix}/X_inference.npy", x_infer.astype(np.float32))

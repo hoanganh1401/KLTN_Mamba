@@ -16,9 +16,9 @@
   "3_normalization": {
     "method": "standard",
     "rule": "StandardScaler per-location per-column",
-    "why": "skewness=0.70 ≈ 0 → StandardScaler đủ tốt",
-    "important": "Normalize riêng từng tỉnh vì AQI chênh nhau 90.9 units giữa các tỉnh",
-    "derived_from": "skewness=0.701"
+    "why": "skewness=0.71 ≈ 0 → StandardScaler đủ tốt",
+    "important": "Normalize riêng từng tỉnh vì AQI chênh nhau 90.1 units giữa các tỉnh",
+    "derived_from": "skewness=0.710"
   },
   "4_time_features": {
     "features": [
@@ -40,8 +40,8 @@
     "context_window_h": 168,
     "forecast_horizon_h": 24,
     "stride_h": 1,
-    "why": "Window 168h đủ học daily + weekly seasonality (daily_amp=10.5 AQI units)",
-    "derived_from": "daily_amplitude=10.5"
+    "why": "Window 168h đủ học daily + weekly seasonality (daily_amp=11.1 AQI units)",
+    "derived_from": "daily_amplitude=11.1"
   },
   "6_train_test_split": {
     "rule": "Temporal split: train đến tháng N-1, test tháng N",

@@ -33,6 +33,7 @@ from common.minio_io import (
     upload_npy,
     upload_pickle,
 )
+from common.time_utils import now_local, parse_time_local
 
 DEFAULT_HARD_FAIL_COLS = [
     "_invalid_segment",
@@ -71,7 +72,7 @@ def normalize_time_column(df: pd.DataFrame) -> pd.DataFrame:
                 df = df.rename(columns={col: "time"})
                 break
     if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df["time"] = parse_time_local(df["time"])
     return df
 
 
@@ -180,7 +181,7 @@ def build_samples(
 
         values = g[feature_cols].to_numpy(dtype=np.float32)
         targets = g[target_col].to_numpy(dtype=np.float32)
-        times = pd.to_datetime(g["time"], utc=True, errors="coerce").dt.tz_convert(None).to_numpy(dtype="datetime64[ns]")
+        times = parse_time_local(g["time"]).dt.tz_localize(None).to_numpy(dtype="datetime64[ns]")
         time_diffs_h = np.diff(times).astype("timedelta64[h]")
 
         max_start = len(g) - seq_len - pred_len
@@ -346,7 +347,7 @@ def main() -> None:
     scaling_cfg = project_cfg.get("scaling", {})
     features_cfg = project_cfg.get("features", {})
 
-    end_default = (datetime.utcnow() - timedelta(days=1)).date()
+    end_default = (now_local() - timedelta(days=1)).date()
     end_date = parse_date(args.end_date, end_default)
     if args.start_date:
         start_date = parse_date(args.start_date)
@@ -435,7 +436,7 @@ def main() -> None:
     for split in splits.values():
         split["x"] = apply_scaler(split["x"], scaler, metric_idx)
 
-    run_id = args.run_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_id = args.run_id or now_local().strftime("%Y%m%d_%H%M%S")
     prefix = f"training_dataset/run_id={run_id}"
 
     client = get_client()

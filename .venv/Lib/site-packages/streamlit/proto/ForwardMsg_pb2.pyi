@@ -41,10 +41,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -100,8 +100,8 @@ class ForwardMsg(_message.Message):
     AUTH_REDIRECT_FIELD_NUMBER: _builtins.int
     PARENT_MESSAGE_FIELD_NUMBER: _builtins.int
     REF_HASH_FIELD_NUMBER: _builtins.int
-    DEFERRED_FILE_RESPONSE_FIELD_NUMBER: _builtins.int
     HEARTBEAT_ACK_FIELD_NUMBER: _builtins.int
+    BACKEND_OPERATION_RESPONSE_FIELD_NUMBER: _builtins.int
     DEBUG_LAST_BACKMSG_ID_FIELD_NUMBER: _builtins.int
     hash: _builtins.str
     """A hash that uniquely identifies this ForwardMsg, for caching."""
@@ -171,8 +171,10 @@ class ForwardMsg(_message.Message):
         """Platform - message to host"""
 
     @_builtins.property
-    def deferred_file_response(self) -> Global___DeferredFileResponse:
-        """Response for a deferred file request"""
+    def backend_operation_response(self) -> Global___BackendOperationResponse:
+        """Generic backend operation response for server-side operations.
+        Corresponds to BackendOperationRequest in BackMsg.
+        """
 
     def __init__(
         self,
@@ -196,41 +198,74 @@ class ForwardMsg(_message.Message):
         auth_redirect: _AuthRedirect_pb2.AuthRedirect | None = ...,
         parent_message: _ParentMessage_pb2.ParentMessage | None = ...,
         ref_hash: _builtins.str = ...,
-        deferred_file_response: Global___DeferredFileResponse | None = ...,
         heartbeat_ack: _builtins.bool = ...,
+        backend_operation_response: Global___BackendOperationResponse | None = ...,
         debug_last_backmsg_id: _builtins.str = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["auth_redirect", b"auth_redirect", "auto_rerun", b"auto_rerun", "deferred_file_response", b"deferred_file_response", "delta", b"delta", "file_urls_response", b"file_urls_response", "git_info_changed", b"git_info_changed", "heartbeat_ack", b"heartbeat_ack", "logo", b"logo", "metadata", b"metadata", "navigation", b"navigation", "new_session", b"new_session", "page_config_changed", b"page_config_changed", "page_info_changed", b"page_info_changed", "page_not_found", b"page_not_found", "page_profile", b"page_profile", "parent_message", b"parent_message", "ref_hash", b"ref_hash", "script_finished", b"script_finished", "session_event", b"session_event", "session_status_changed", b"session_status_changed", "type", b"type"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["auth_redirect", b"auth_redirect", "auto_rerun", b"auto_rerun", "backend_operation_response", b"backend_operation_response", "delta", b"delta", "file_urls_response", b"file_urls_response", "git_info_changed", b"git_info_changed", "heartbeat_ack", b"heartbeat_ack", "logo", b"logo", "metadata", b"metadata", "navigation", b"navigation", "new_session", b"new_session", "page_config_changed", b"page_config_changed", "page_info_changed", b"page_info_changed", "page_not_found", b"page_not_found", "page_profile", b"page_profile", "parent_message", b"parent_message", "ref_hash", b"ref_hash", "script_finished", b"script_finished", "session_event", b"session_event", "session_status_changed", b"session_status_changed", "type", b"type"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["auth_redirect", b"auth_redirect", "auto_rerun", b"auto_rerun", "debug_last_backmsg_id", b"debug_last_backmsg_id", "deferred_file_response", b"deferred_file_response", "delta", b"delta", "file_urls_response", b"file_urls_response", "git_info_changed", b"git_info_changed", "hash", b"hash", "heartbeat_ack", b"heartbeat_ack", "logo", b"logo", "metadata", b"metadata", "navigation", b"navigation", "new_session", b"new_session", "page_config_changed", b"page_config_changed", "page_info_changed", b"page_info_changed", "page_not_found", b"page_not_found", "page_profile", b"page_profile", "parent_message", b"parent_message", "ref_hash", b"ref_hash", "script_finished", b"script_finished", "session_event", b"session_event", "session_status_changed", b"session_status_changed", "type", b"type"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["auth_redirect", b"auth_redirect", "auto_rerun", b"auto_rerun", "backend_operation_response", b"backend_operation_response", "debug_last_backmsg_id", b"debug_last_backmsg_id", "delta", b"delta", "file_urls_response", b"file_urls_response", "git_info_changed", b"git_info_changed", "hash", b"hash", "heartbeat_ack", b"heartbeat_ack", "logo", b"logo", "metadata", b"metadata", "navigation", b"navigation", "new_session", b"new_session", "page_config_changed", b"page_config_changed", "page_info_changed", b"page_info_changed", "page_not_found", b"page_not_found", "page_profile", b"page_profile", "parent_message", b"parent_message", "ref_hash", b"ref_hash", "script_finished", b"script_finished", "session_event", b"session_event", "session_status_changed", b"session_status_changed", "type", b"type"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
-    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["new_session", "delta", "page_info_changed", "page_config_changed", "script_finished", "git_info_changed", "page_profile", "session_status_changed", "session_event", "navigation", "page_not_found", "file_urls_response", "auto_rerun", "logo", "auth_redirect", "parent_message", "ref_hash", "deferred_file_response", "heartbeat_ack"]  # noqa: Y015
+    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["new_session", "delta", "page_info_changed", "page_config_changed", "script_finished", "git_info_changed", "page_profile", "session_status_changed", "session_event", "navigation", "page_not_found", "file_urls_response", "auto_rerun", "logo", "auth_redirect", "parent_message", "ref_hash", "heartbeat_ack", "backend_operation_response"]  # noqa: Y015
     _WhichOneofArgType_type: _TypeAlias = _typing.Literal["type", b"type"]  # noqa: Y015
     def WhichOneof(self, oneof_group: _WhichOneofArgType_type) -> _WhichOneofReturnType_type | None: ...
 
 Global___ForwardMsg: _TypeAlias = ForwardMsg  # noqa: Y015
 
 @_typing.final
-class DeferredFileResponse(_message.Message):
+class BackendOperationResponse(_message.Message):
+    """Generic backend operation response for server-side operations without script rerun."""
+
     DESCRIPTOR: _descriptor.Descriptor
 
-    FILE_ID_FIELD_NUMBER: _builtins.int
-    URL_FIELD_NUMBER: _builtins.int
+    REQUEST_ID_FIELD_NUMBER: _builtins.int
     ERROR_MSG_FIELD_NUMBER: _builtins.int
-    file_id: _builtins.str
-    url: _builtins.str
+    DEFERRED_FILE_FIELD_NUMBER: _builtins.int
+    request_id: _builtins.str
+    """Matches the request_id from BackendOperationRequest"""
     error_msg: _builtins.str
+    """Error message if request failed (empty on success)"""
+    @_builtins.property
+    def deferred_file(self) -> Global___DeferredFileResponsePayload:
+        """Response for deferred file requests"""
+
     def __init__(
         self,
         *,
-        file_id: _builtins.str = ...,
-        url: _builtins.str = ...,
+        request_id: _builtins.str = ...,
         error_msg: _builtins.str = ...,
+        deferred_file: Global___DeferredFileResponsePayload | None = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["error_msg", b"error_msg", "file_id", b"file_id", "url", b"url"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["deferred_file", b"deferred_file", "payload", b"payload"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["deferred_file", b"deferred_file", "error_msg", b"error_msg", "payload", b"payload", "request_id", b"request_id"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType_payload: _TypeAlias = _typing.Literal["deferred_file"]  # noqa: Y015
+    _WhichOneofArgType_payload: _TypeAlias = _typing.Literal["payload", b"payload"]  # noqa: Y015
+    def WhichOneof(self, oneof_group: _WhichOneofArgType_payload) -> _WhichOneofReturnType_payload | None: ...
 
-Global___DeferredFileResponse: _TypeAlias = DeferredFileResponse  # noqa: Y015
+Global___BackendOperationResponse: _TypeAlias = BackendOperationResponse  # noqa: Y015
+
+@_typing.final
+class DeferredFileResponsePayload(_message.Message):
+    """Response payload for deferred file downloads"""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    URL_FIELD_NUMBER: _builtins.int
+    url: _builtins.str
+    def __init__(
+        self,
+        *,
+        url: _builtins.str = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["url", b"url"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
+
+Global___DeferredFileResponsePayload: _TypeAlias = DeferredFileResponsePayload  # noqa: Y015
 
 @_typing.final
 class ForwardMsgMetadata(_message.Message):
@@ -266,8 +301,11 @@ class ForwardMsgMetadata(_message.Message):
         delta_path: _abc.Iterable[_builtins.int] | None = ...,
         active_script_hash: _builtins.str = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["active_script_hash", b"active_script_hash", "cacheable", b"cacheable", "delta_path", b"delta_path"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___ForwardMsgMetadata: _TypeAlias = ForwardMsgMetadata  # noqa: Y015
 
@@ -290,7 +328,10 @@ class ForwardMsgList(_message.Message):
         *,
         messages: _abc.Iterable[Global___ForwardMsg] | None = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["messages", b"messages"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___ForwardMsgList: _TypeAlias = ForwardMsgList  # noqa: Y015

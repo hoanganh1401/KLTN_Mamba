@@ -92,6 +92,7 @@ from src.Inference.predict_aqi_next import build_future_24h_frame, format_time_u
 from src.Model.mamba_model import TimeSeriesMambaRegressor
 from src.common.config import MINIO_ARTIFACTS_BUCKET, MINIO_GOLD_BUCKET, load_project_config
 from src.common.minio_io import get_client, load_bytes, load_json_object, load_npy, load_pickle, upload_bytes, upload_json
+from src.common.time_utils import now_local, parse_time_local
 
 
 # ---------------------------------------------------------------------------
@@ -127,12 +128,12 @@ def build_time_series_samples(
     """
     # Validate — auto-detect timestamp column (case-insensitive)
     col_map = {c.lower(): c for c in df.columns}
-    if "ts_utc" in col_map:
-        ts_col = col_map["ts_utc"]
-    elif "time" in col_map:
+    if "time" in col_map:
         ts_col = col_map["time"]
     elif "timestamp" in col_map:
         ts_col = col_map["timestamp"]
+    elif "ts_utc" in col_map:
+        ts_col = col_map["ts_utc"]
     else:
         raise ValueError(
             "Cot timestamp khong tim thay trong dataset. "
@@ -157,7 +158,7 @@ def build_time_series_samples(
     if sample_stride < 1:
         raise ValueError("sample_stride phải >= 1.")
 
-    work["_ts"] = pd.to_datetime(work[ts_col], utc=True, errors="coerce")
+    work["_ts"] = parse_time_local(work[ts_col])
     missing_required = work[["_ts", "location_key", target_col]].isna().any(axis=1)
     if missing_required.any():
         raise ValueError(f"Du lieu chua NaN o {ts_col}/location_key/target. Vui long lam sach truoc.")
@@ -468,7 +469,7 @@ def _optional_npy(client, bucket: str, path: str) -> np.ndarray | None:
             return None
         arr = np.load(io.BytesIO(raw), allow_pickle=True)
         if arr.dtype == object:
-            arr = pd.to_datetime(arr, utc=True, errors="coerce").tz_convert(None).to_numpy(dtype="datetime64[ns]")
+            arr = parse_time_local(arr).dt.tz_localize(None).to_numpy(dtype="datetime64[ns]")
         return arr
 
 
@@ -570,7 +571,7 @@ def upload_training_outputs_to_minio(
             "dataset_prefix": dataset_prefix,
             "artifact_prefix": prefix,
             "bucket": MINIO_ARTIFACTS_BUCKET,
-            "uploaded_at": datetime.utcnow().isoformat(),
+            "uploaded_at": now_local().isoformat(),
         },
     )
     logger.info("Training artifacts uploaded: s3://%s/%s", MINIO_ARTIFACTS_BUCKET, prefix)
@@ -1187,7 +1188,7 @@ def main() -> None:
             },
             "device": str(device),
         },
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": now_local().isoformat(),
     }
     metadata_path.write_text(json.dumps(training_metadata, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
 
@@ -1212,18 +1213,18 @@ def main() -> None:
             raise ValueError("Dataset forecast cần có cột 'location_key'.")
 
         col_map = {c.lower(): c for c in base_df.columns}
-        base_ts_col = col_map.get("ts_utc") or col_map.get("time") or col_map.get("timestamp")
+        base_ts_col = col_map.get("time") or col_map.get("timestamp") or col_map.get("ts_utc")
         if base_ts_col is None:
             raise ValueError("Cần có cột timestamp ('ts_utc', 'Time', hoặc 'timestamp') để dự báo tiếp theo.")
-        if base_ts_col != "ts_utc":
-            base_df["ts_utc"] = base_df[base_ts_col]
+        if base_ts_col != "time":
+            base_df["time"] = base_df[base_ts_col]
 
         cleaned = df.copy()
         clean_col_map = {c.lower(): c for c in cleaned.columns}
-        clean_ts_col = clean_col_map.get("ts_utc") or clean_col_map.get("time") or clean_col_map.get("timestamp")
+        clean_ts_col = clean_col_map.get("time") or clean_col_map.get("timestamp") or clean_col_map.get("ts_utc")
         if clean_ts_col is None:
             raise ValueError("Dataset train không có cột timestamp hợp lệ để forecast.")
-        cleaned["_ts"] = pd.to_datetime(cleaned[clean_ts_col], utc=True, errors="coerce")
+        cleaned["_ts"] = parse_time_local(cleaned[clean_ts_col])
         cleaned = cleaned.dropna(subset=["_ts", "location_key", args.target_col]).copy()
         cleaned["_loc_id"] = cleaned["location_key"].astype("category").cat.codes.astype(np.int64)
         loc_to_id = (
@@ -1274,9 +1275,9 @@ def main() -> None:
                 loc_hist = (
                     base_df.loc[base_df["location_key"].astype(str) == loc]
                     .copy()
-                    .assign(ts_utc=lambda d: pd.to_datetime(d["ts_utc"], utc=True, errors="coerce"))
-                    .dropna(subset=["ts_utc"])
-                    .sort_values("ts_utc")
+                    .assign(time=lambda d: parse_time_local(d["time"]))
+                    .dropna(subset=["time"])
+                    .sort_values("time")
                 )
                 if len(loc_hist) < args.window_size:
                     continue
@@ -1285,14 +1286,14 @@ def main() -> None:
                 loc_future = (
                     future_df.loc[future_df["location_key"].astype(str) == loc]
                     .copy()
-                    .assign(ts_utc=lambda d: pd.to_datetime(d["ts_utc"], utc=True, errors="coerce"))
-                    .sort_values("ts_utc")
+                    .assign(time=lambda d: parse_time_local(d["time"]))
+                    .sort_values("time")
                 )
 
                 for _, row in loc_future.iterrows():
                     x_norm = (rolling_window - x_mean_2d) / x_std_2d
                     infer_x.append(x_norm.astype(np.float32, copy=False))
-                    infer_meta.append((row["ts_utc"], loc))
+                    infer_meta.append((row["time"], loc))
                     next_feats = row[feature_cols].to_numpy(dtype=np.float32).reshape(1, -1)
                     rolling_window = np.concatenate([rolling_window[1:], next_feats], axis=0)
 

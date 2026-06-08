@@ -12,16 +12,17 @@ import numpy as np
 import pandas as pd
 import torch
 
+from src.common.time_utils import format_time_local_strings, parse_time_local
+
 
 def format_time_utc_strings(values: pd.Series) -> pd.Series:
-    """Format datetime-like values as UTC strings."""
-    ts = pd.to_datetime(values, utc=True, errors="coerce")
-    return ts.dt.strftime("%Y-%m-%d %H:%M:%S+00:00")
+    """Backward-compatible alias: format datetime-like values as Vietnam local time."""
+    return format_time_local_strings(values)
 
 
 def _resolve_time_col(df: pd.DataFrame) -> str:
     col_map = {c.lower(): c for c in df.columns}
-    ts_col = col_map.get("ts_utc") or col_map.get("time") or col_map.get("timestamp")
+    ts_col = col_map.get("time") or col_map.get("timestamp") or col_map.get("ts_utc")
     if ts_col is None:
         raise ValueError("Need timestamp column: 'ts_utc', 'time', or 'timestamp'.")
     return ts_col
@@ -39,27 +40,27 @@ def build_future_24h_frame(
 
     work = df_valid.copy()
     ts_col = _resolve_time_col(work)
-    if ts_col != "ts_utc":
-        work["ts_utc"] = work[ts_col]
-    work["ts_utc"] = pd.to_datetime(work["ts_utc"], utc=True, errors="coerce")
-    work = work.dropna(subset=["ts_utc"]).copy()
+    if ts_col != "time":
+        work["time"] = work[ts_col]
+    work["time"] = parse_time_local(work["time"])
+    work = work.dropna(subset=["time"]).copy()
     if work.empty:
         raise ValueError("No valid timestamps found for future frame.")
 
     if "location_key" in work.columns:
         groups = [
-            (loc, work.loc[work["location_key"].astype(str) == loc].sort_values("ts_utc").copy())
+            (loc, work.loc[work["location_key"].astype(str) == loc].sort_values("time").copy())
             for loc in sorted(work["location_key"].dropna().astype(str).unique().tolist())
         ]
     else:
-        groups = [(None, work.sort_values("ts_utc").copy())]
+        groups = [(None, work.sort_values("time").copy())]
 
     future_rows: list[dict[str, Any]] = []
     for loc, group in groups:
         if group.empty:
             continue
 
-        last_ts = group["ts_utc"].iloc[-1]
+        last_ts = group["time"].iloc[-1]
         start_ts = last_ts + pd.Timedelta(hours=1)
         template = group.tail(hours).copy()
         if template.empty:
@@ -73,7 +74,7 @@ def build_future_24h_frame(
             row = {col: src[col] for col in feature_cols if col in template.columns}
             if loc is not None:
                 row["location_key"] = loc
-            row["ts_utc"] = start_ts + pd.Timedelta(hours=h)
+            row["time"] = start_ts + pd.Timedelta(hours=h)
             row[target_col] = np.nan
             future_rows.append(row)
 

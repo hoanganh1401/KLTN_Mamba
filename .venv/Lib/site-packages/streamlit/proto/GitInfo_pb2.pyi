@@ -26,10 +26,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -78,7 +78,10 @@ class GitInfo(_message.Message):
         uncommitted_files: _abc.Iterable[_builtins.str] | None = ...,
         state: Global___GitInfo.GitStates.ValueType = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["branch", b"branch", "module", b"module", "repository", b"repository", "state", b"state", "uncommitted_files", b"uncommitted_files", "untracked_files", b"untracked_files"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___GitInfo: _TypeAlias = GitInfo  # noqa: Y015

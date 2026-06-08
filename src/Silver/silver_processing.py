@@ -45,6 +45,7 @@ from common.minio_io import (
     upload_csv,
     upload_json,
 )
+from common.time_utils import now_local
 
 
 # =============================
@@ -88,7 +89,6 @@ def step_impute(
         start=df.index.min().floor("h"),
         end=df.index.max().ceil("h"),
         freq="1h",
-        tz="UTC",
     )
     df = df.reindex(full_idx)
     df["_imputed"] = df["location"].isna()
@@ -218,7 +218,7 @@ def run_processing(locations_path: str, target_date_str: str) -> None:
     }
     summary = {
         "target_date": target_date_str,
-        "processed_at": datetime.utcnow().isoformat(),
+        "processed_at": now_local().isoformat(),
         "config_used": cfg_serializable,
         "total": len(all_logs),
         "ok": n_ok,
@@ -237,7 +237,7 @@ def main() -> None:
     parser.add_argument("--date", default=None, help="YYYY-MM-DD (default: yesterday)")
     args = parser.parse_args()
 
-    target = args.date or (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    target = args.date or (now_local() - timedelta(days=1)).strftime("%Y-%m-%d")
     run_processing(args.locations, target)
 
 

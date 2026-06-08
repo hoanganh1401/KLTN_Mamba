@@ -26,11 +26,13 @@ Ghi chu:
 - Thay doi bien moi truong o [Tool/.env](Tool/.env) va [Tool/docker-compose.yaml](Tool/docker-compose.yaml) neu can (MINIO_*, WAQI_API_KEY...).
 
 ## 3. Chay DAG trong Airflow
-Trong repo hien co DAG o:
-- [Airflow/dags/dags_incremental.py](Airflow/dags/dags_incremental.py): `air_quality_bronze_ingestion`
-- [Airflow/dags/test.py](Airflow/dags/test.py): `air_quality_hourly`
+Trong repo hien co DAG chinh o:
+- [Airflow/dags/air_quality_hourly.py](Airflow/dags/air_quality_hourly.py): `air_quality_hourly`
+  - Chay moi gio: ingest incremental -> validate hourly -> process Silver -> build Gold features.
+- [Airflow/dags/air_quality_daily_training.py](Airflow/dags/air_quality_daily_training.py): `air_quality_daily_training`
+  - Chay 01:00 hang ngay: validate daily -> refresh Gold features -> prepare training dataset -> train Mamba -> prepare inference input -> run inference.
 
-Cac file [Airflow/dags/air_quality_hourly.py](Airflow/dags/air_quality_hourly.py) va [Airflow/dags/air_quality_daily_training.py](Airflow/dags/air_quality_daily_training.py) hien dang trong.
+[Airflow/dags/dags_incremental.py](Airflow/dags/dags_incremental.py) va [Airflow/dags/test.py](Airflow/dags/test.py) chi con la file deprecated, khong tao DAG rieng de tranh trung `dag_id`.
 
 De chay:
 1. Vao Airflow UI

@@ -25,10 +25,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -107,8 +107,11 @@ class PageProfile(_message.Message):
         installed_skills: _abc.Iterable[_builtins.str] | None = ...,
         installed_agents: _abc.Iterable[_builtins.str] | None = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["attributions", b"attributions", "commands", b"commands", "config", b"config", "exec_time", b"exec_time", "headless", b"headless", "installed_agents", b"installed_agents", "installed_skills", b"installed_skills", "is_fragment_run", b"is_fragment_run", "os", b"os", "prep_time", b"prep_time", "server_mode", b"server_mode", "timezone", b"timezone", "uncaught_exception", b"uncaught_exception"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___PageProfile: _TypeAlias = PageProfile  # noqa: Y015
 
@@ -141,8 +144,11 @@ class Argument(_message.Message):
         m: _builtins.str = ...,
         p: _builtins.int = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["k", b"k", "m", b"m", "p", b"p", "t", b"t"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___Argument: _TypeAlias = Argument  # noqa: Y015
 
@@ -164,7 +170,10 @@ class Command(_message.Message):
         args: _abc.Iterable[Global___Argument] | None = ...,
         time: _builtins.int = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["args", b"args", "name", b"name", "time", b"time"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___Command: _TypeAlias = Command  # noqa: Y015

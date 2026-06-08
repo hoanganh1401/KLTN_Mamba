@@ -27,10 +27,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -49,8 +49,11 @@ class Block(_message.Message):
             *,
             border: _builtins.bool = ...,
         ) -> None: ...
+        _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+        def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
         _ClearFieldArgType: _TypeAlias = _typing.Literal["border", b"border"]  # noqa: Y015
         def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+        def WhichOneof(self, oneof_group: _Never) -> None: ...
 
     @_typing.final
     class Horizontal(_message.Message):
@@ -63,8 +66,11 @@ class Block(_message.Message):
             *,
             gap: _builtins.str = ...,
         ) -> None: ...
+        _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+        def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
         _ClearFieldArgType: _TypeAlias = _typing.Literal["gap", b"gap"]  # noqa: Y015
         def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+        def WhichOneof(self, oneof_group: _Never) -> None: ...
 
     @_typing.final
     class FlexContainer(_message.Message):
@@ -153,6 +159,7 @@ class Block(_message.Message):
         def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
         _ClearFieldArgType: _TypeAlias = _typing.Literal["align", b"align", "border", b"border", "direction", b"direction", "gap_config", b"gap_config", "justify", b"justify", "scale", b"scale", "wrap", b"wrap"]  # noqa: Y015
         def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+        def WhichOneof(self, oneof_group: _Never) -> None: ...
 
     @_typing.final
     class Column(_message.Message):
@@ -202,10 +209,28 @@ class Block(_message.Message):
     class Expandable(_message.Message):
         DESCRIPTOR: _descriptor.Descriptor
 
+        class _Type:
+            ValueType = _typing.NewType("ValueType", _builtins.int)
+            V: _TypeAlias = ValueType  # noqa: Y015
+
+        class _TypeEnumTypeWrapper(_enum_type_wrapper._EnumTypeWrapper[Block.Expandable._Type.ValueType], _builtins.type):
+            DESCRIPTOR: _descriptor.EnumDescriptor
+            DEFAULT: Block.Expandable._Type.ValueType  # 0
+            """Default: with border and background"""
+            COMPACT: Block.Expandable._Type.ValueType  # 1
+            """Minimal inline toggle without border"""
+
+        class Type(_Type, metaclass=_TypeEnumTypeWrapper): ...
+        DEFAULT: Block.Expandable.Type.ValueType  # 0
+        """Default: with border and background"""
+        COMPACT: Block.Expandable.Type.ValueType  # 1
+        """Minimal inline toggle without border"""
+
         LABEL_FIELD_NUMBER: _builtins.int
         EXPANDED_FIELD_NUMBER: _builtins.int
         ICON_FIELD_NUMBER: _builtins.int
         ID_FIELD_NUMBER: _builtins.int
+        TYPE_FIELD_NUMBER: _builtins.int
         label: _builtins.str
         expanded: _builtins.bool
         icon: _builtins.str
@@ -213,6 +238,8 @@ class Block(_message.Message):
         """ID for dynamic expanders. Only set when on_change="rerun",
         signaling the frontend to treat this as a stateful widget.
         """
+        type: Global___Block.Expandable.Type.ValueType
+        """Visual style of the expandable container."""
         def __init__(
             self,
             *,
@@ -220,10 +247,11 @@ class Block(_message.Message):
             expanded: _builtins.bool | None = ...,
             icon: _builtins.str = ...,
             id: _builtins.str | None = ...,
+            type: Global___Block.Expandable.Type.ValueType = ...,
         ) -> None: ...
         _HasFieldArgType: _TypeAlias = _typing.Literal["_expanded", b"_expanded", "_id", b"_id", "expanded", b"expanded", "id", b"id"]  # noqa: Y015
         def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-        _ClearFieldArgType: _TypeAlias = _typing.Literal["_expanded", b"_expanded", "_id", b"_id", "expanded", b"expanded", "icon", b"icon", "id", b"id", "label", b"label"]  # noqa: Y015
+        _ClearFieldArgType: _TypeAlias = _typing.Literal["_expanded", b"_expanded", "_id", b"_id", "expanded", b"expanded", "icon", b"icon", "id", b"id", "label", b"label", "type", b"type"]  # noqa: Y015
         def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
         _WhichOneofReturnType__expanded: _TypeAlias = _typing.Literal["expanded"]  # noqa: Y015
         _WhichOneofArgType__expanded: _TypeAlias = _typing.Literal["_expanded", b"_expanded"]  # noqa: Y015
@@ -305,8 +333,11 @@ class Block(_message.Message):
             border: _builtins.bool = ...,
             enter_to_submit: _builtins.bool = ...,
         ) -> None: ...
+        _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+        def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
         _ClearFieldArgType: _TypeAlias = _typing.Literal["border", b"border", "clear_on_submit", b"clear_on_submit", "enter_to_submit", b"enter_to_submit", "form_id", b"form_id"]  # noqa: Y015
         def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+        def WhichOneof(self, oneof_group: _Never) -> None: ...
 
     @_typing.final
     class TabContainer(_message.Message):
@@ -346,8 +377,11 @@ class Block(_message.Message):
             *,
             label: _builtins.str = ...,
         ) -> None: ...
+        _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+        def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
         _ClearFieldArgType: _TypeAlias = _typing.Literal["label", b"label"]  # noqa: Y015
         def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+        def WhichOneof(self, oneof_group: _Never) -> None: ...
 
     @_typing.final
     class Popover(_message.Message):
@@ -429,8 +463,11 @@ class Block(_message.Message):
             avatar: _builtins.str = ...,
             avatar_type: Global___Block.ChatMessage.AvatarType.ValueType = ...,
         ) -> None: ...
+        _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+        def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
         _ClearFieldArgType: _TypeAlias = _typing.Literal["avatar", b"avatar", "avatar_type", b"avatar_type", "name", b"name"]  # noqa: Y015
         def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+        def WhichOneof(self, oneof_group: _Never) -> None: ...
 
     VERTICAL_FIELD_NUMBER: _builtins.int
     HORIZONTAL_FIELD_NUMBER: _builtins.int

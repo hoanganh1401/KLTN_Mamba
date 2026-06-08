@@ -25,10 +25,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -47,7 +47,7 @@ class BackMsg(_message.Message):
     DEBUG_SHUTDOWN_RUNTIME_FIELD_NUMBER: _builtins.int
     FILE_URLS_REQUEST_FIELD_NUMBER: _builtins.int
     APP_HEARTBEAT_FIELD_NUMBER: _builtins.int
-    DEFERRED_FILE_REQUEST_FIELD_NUMBER: _builtins.int
+    BACKEND_OPERATION_REQUEST_FIELD_NUMBER: _builtins.int
     DEBUG_LAST_BACKMSG_ID_FIELD_NUMBER: _builtins.int
     clear_cache: _builtins.bool
     """Requests that the app's @st_cache be cleared"""
@@ -84,8 +84,10 @@ class BackMsg(_message.Message):
         """
 
     @_builtins.property
-    def deferred_file_request(self) -> Global___DeferredFileRequest:
-        """Requests that the server execute a deferred callable and return the URL"""
+    def backend_operation_request(self) -> Global___BackendOperationRequest:
+        """Generic backend operation request for server-side operations without script rerun.
+        Used for server-side operations like deferred downloads, lazy dataframe loading, server-side validation, autocompletion, etc.
+        """
 
     def __init__(
         self,
@@ -99,34 +101,70 @@ class BackMsg(_message.Message):
         debug_shutdown_runtime: _builtins.bool = ...,
         file_urls_request: _Common_pb2.FileURLsRequest | None = ...,
         app_heartbeat: _builtins.bool = ...,
-        deferred_file_request: Global___DeferredFileRequest | None = ...,
+        backend_operation_request: Global___BackendOperationRequest | None = ...,
         debug_last_backmsg_id: _builtins.str = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["app_heartbeat", b"app_heartbeat", "clear_cache", b"clear_cache", "debug_disconnect_websocket", b"debug_disconnect_websocket", "debug_shutdown_runtime", b"debug_shutdown_runtime", "deferred_file_request", b"deferred_file_request", "file_urls_request", b"file_urls_request", "load_git_info", b"load_git_info", "rerun_script", b"rerun_script", "set_run_on_save", b"set_run_on_save", "stop_script", b"stop_script", "type", b"type"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["app_heartbeat", b"app_heartbeat", "backend_operation_request", b"backend_operation_request", "clear_cache", b"clear_cache", "debug_disconnect_websocket", b"debug_disconnect_websocket", "debug_shutdown_runtime", b"debug_shutdown_runtime", "file_urls_request", b"file_urls_request", "load_git_info", b"load_git_info", "rerun_script", b"rerun_script", "set_run_on_save", b"set_run_on_save", "stop_script", b"stop_script", "type", b"type"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["app_heartbeat", b"app_heartbeat", "clear_cache", b"clear_cache", "debug_disconnect_websocket", b"debug_disconnect_websocket", "debug_last_backmsg_id", b"debug_last_backmsg_id", "debug_shutdown_runtime", b"debug_shutdown_runtime", "deferred_file_request", b"deferred_file_request", "file_urls_request", b"file_urls_request", "load_git_info", b"load_git_info", "rerun_script", b"rerun_script", "set_run_on_save", b"set_run_on_save", "stop_script", b"stop_script", "type", b"type"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["app_heartbeat", b"app_heartbeat", "backend_operation_request", b"backend_operation_request", "clear_cache", b"clear_cache", "debug_disconnect_websocket", b"debug_disconnect_websocket", "debug_last_backmsg_id", b"debug_last_backmsg_id", "debug_shutdown_runtime", b"debug_shutdown_runtime", "file_urls_request", b"file_urls_request", "load_git_info", b"load_git_info", "rerun_script", b"rerun_script", "set_run_on_save", b"set_run_on_save", "stop_script", b"stop_script", "type", b"type"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
-    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["clear_cache", "set_run_on_save", "stop_script", "rerun_script", "load_git_info", "debug_disconnect_websocket", "debug_shutdown_runtime", "file_urls_request", "app_heartbeat", "deferred_file_request"]  # noqa: Y015
+    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["clear_cache", "set_run_on_save", "stop_script", "rerun_script", "load_git_info", "debug_disconnect_websocket", "debug_shutdown_runtime", "file_urls_request", "app_heartbeat", "backend_operation_request"]  # noqa: Y015
     _WhichOneofArgType_type: _TypeAlias = _typing.Literal["type", b"type"]  # noqa: Y015
     def WhichOneof(self, oneof_group: _WhichOneofArgType_type) -> _WhichOneofReturnType_type | None: ...
 
 Global___BackMsg: _TypeAlias = BackMsg  # noqa: Y015
 
 @_typing.final
-class DeferredFileRequest(_message.Message):
+class BackendOperationRequest(_message.Message):
+    """Generic backend operation request for server-side operations without script rerun."""
+
+    DESCRIPTOR: _descriptor.Descriptor
+
+    REQUEST_ID_FIELD_NUMBER: _builtins.int
+    SESSION_ID_FIELD_NUMBER: _builtins.int
+    DEFERRED_FILE_FIELD_NUMBER: _builtins.int
+    request_id: _builtins.str
+    """Unique request ID (UUID) generated by the frontend"""
+    session_id: _builtins.str
+    """Session ID validated against the WebSocket's AppSession before dispatch"""
+    @_builtins.property
+    def deferred_file(self) -> Global___DeferredFileRequestPayload:
+        """Deferred file download request"""
+
+    def __init__(
+        self,
+        *,
+        request_id: _builtins.str = ...,
+        session_id: _builtins.str = ...,
+        deferred_file: Global___DeferredFileRequestPayload | None = ...,
+    ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _typing.Literal["deferred_file", b"deferred_file", "payload", b"payload"]  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["deferred_file", b"deferred_file", "payload", b"payload", "request_id", b"request_id", "session_id", b"session_id"]  # noqa: Y015
+    def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType_payload: _TypeAlias = _typing.Literal["deferred_file"]  # noqa: Y015
+    _WhichOneofArgType_payload: _TypeAlias = _typing.Literal["payload", b"payload"]  # noqa: Y015
+    def WhichOneof(self, oneof_group: _WhichOneofArgType_payload) -> _WhichOneofReturnType_payload | None: ...
+
+Global___BackendOperationRequest: _TypeAlias = BackendOperationRequest  # noqa: Y015
+
+@_typing.final
+class DeferredFileRequestPayload(_message.Message):
+    """Payload for deferred file requests"""
+
     DESCRIPTOR: _descriptor.Descriptor
 
     FILE_ID_FIELD_NUMBER: _builtins.int
-    SESSION_ID_FIELD_NUMBER: _builtins.int
     file_id: _builtins.str
-    session_id: _builtins.str
     def __init__(
         self,
         *,
         file_id: _builtins.str = ...,
-        session_id: _builtins.str = ...,
     ) -> None: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["file_id", b"file_id", "session_id", b"session_id"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["file_id", b"file_id"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
-Global___DeferredFileRequest: _TypeAlias = DeferredFileRequest  # noqa: Y015
+Global___DeferredFileRequestPayload: _TypeAlias = DeferredFileRequestPayload  # noqa: Y015

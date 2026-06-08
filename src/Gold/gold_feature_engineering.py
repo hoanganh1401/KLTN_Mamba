@@ -40,6 +40,7 @@ from common.minio_io import (
     upload_csv,
     upload_json,
 )
+from common.time_utils import now_local, parse_time_local
 
 
 def _resolve_time_column(df: pd.DataFrame) -> str:
@@ -57,7 +58,7 @@ def step_time_features(df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     Supported: hour_sin, hour_cos, month_sin, month_cos, day_of_week, is_weekend
     """
     time_col = _resolve_time_column(df)
-    t = pd.to_datetime(df[time_col], utc=True, errors="coerce")
+    t = parse_time_local(df[time_col])
     hour = t.dt.hour
     month = t.dt.month
 
@@ -161,7 +162,7 @@ def run_feature_engineering(
     log_path = f"feature_engineering_logs/year={year}/month={month:02d}/day={day:02d}/feature_log.json"
     summary = {
         "target_date": target_date_str,
-        "processed_at": datetime.utcnow().isoformat(),
+        "processed_at": now_local().isoformat(),
         "total": len(all_logs),
         "ok": n_ok,
         "skipped": n_skip,
@@ -181,7 +182,7 @@ def main() -> None:
     parser.add_argument("--config", default=None, help="Path to project YAML config")
     args = parser.parse_args()
 
-    target = args.date or (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    target = args.date or (now_local() - timedelta(days=1)).strftime("%Y-%m-%d")
     location_keys = [x.strip() for x in args.location_keys.split(",") if x.strip()] if args.location_keys else None
     run_feature_engineering(args.locations, target, args.config, location_keys)
 

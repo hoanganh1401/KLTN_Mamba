@@ -19,7 +19,6 @@ limitations under the License.
 
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from streamlit.proto import ArrowNamedDataSet_pb2 as _ArrowNamedDataSet_pb2
 from streamlit.proto import Block_pb2 as _Block_pb2
 from streamlit.proto import Element_pb2 as _Element_pb2
 from streamlit.proto import Transient_pb2 as _Transient_pb2
@@ -43,7 +42,6 @@ class Delta(_message.Message):
     NEW_ELEMENT_FIELD_NUMBER: _builtins.int
     ADD_BLOCK_FIELD_NUMBER: _builtins.int
     NEW_TRANSIENT_FIELD_NUMBER: _builtins.int
-    ARROW_ADD_ROWS_FIELD_NUMBER: _builtins.int
     FRAGMENT_ID_FIELD_NUMBER: _builtins.int
     fragment_id: _builtins.str
     @_builtins.property
@@ -58,24 +56,19 @@ class Delta(_message.Message):
     def new_transient(self) -> _Transient_pb2.Transient:
         """Append a new transient element (e.g. spinner) to the frontend."""
 
-    @_builtins.property
-    def arrow_add_rows(self) -> _ArrowNamedDataSet_pb2.ArrowNamedDataSet:
-        """Append data to a DataFrame for the current element."""
-
     def __init__(
         self,
         *,
         new_element: _Element_pb2.Element | None = ...,
         add_block: _Block_pb2.Block | None = ...,
         new_transient: _Transient_pb2.Transient | None = ...,
-        arrow_add_rows: _ArrowNamedDataSet_pb2.ArrowNamedDataSet | None = ...,
         fragment_id: _builtins.str = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["add_block", b"add_block", "arrow_add_rows", b"arrow_add_rows", "new_element", b"new_element", "new_transient", b"new_transient", "type", b"type"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["add_block", b"add_block", "new_element", b"new_element", "new_transient", b"new_transient", "type", b"type"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["add_block", b"add_block", "arrow_add_rows", b"arrow_add_rows", "fragment_id", b"fragment_id", "new_element", b"new_element", "new_transient", b"new_transient", "type", b"type"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["add_block", b"add_block", "fragment_id", b"fragment_id", "new_element", b"new_element", "new_transient", b"new_transient", "type", b"type"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
-    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["new_element", "add_block", "new_transient", "arrow_add_rows"]  # noqa: Y015
+    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["new_element", "add_block", "new_transient"]  # noqa: Y015
     _WhichOneofArgType_type: _TypeAlias = _typing.Literal["type", b"type"]  # noqa: Y015
     def WhichOneof(self, oneof_group: _WhichOneofArgType_type) -> _WhichOneofReturnType_type | None: ...
 

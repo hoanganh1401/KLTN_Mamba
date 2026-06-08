@@ -26,10 +26,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -203,6 +203,7 @@ class MetricsEvent(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["active_theme", b"active_theme", "anonymous_id", b"anonymous_id", "app_id", b"app_id", "attributions", b"attributions", "branch", b"branch", "browser_info", b"browser_info", "commands", b"commands", "config", b"config", "context_locale", b"context_locale", "context_page_path", b"context_page_path", "context_page_referrer", b"context_page_referrer", "context_page_search", b"context_page_search", "context_page_title", b"context_page_title", "context_page_url", b"context_page_url", "context_user_agent", b"context_user_agent", "creator_id", b"creator_id", "dev", b"dev", "event", b"event", "exec_time", b"exec_time", "has_display", b"has_display", "headless", b"headless", "hosted_at", b"hosted_at", "installed_agents", b"installed_agents", "installed_skills", b"installed_skills", "is_fragment_run", b"is_fragment_run", "is_hello", b"is_hello", "is_webdriver", b"is_webdriver", "label", b"label", "machine_id_v3", b"machine_id_v3", "machine_id_v4", b"machine_id_v4", "main_module", b"main_module", "num_pages", b"num_pages", "os", b"os", "owner", b"owner", "page_script_hash", b"page_script_hash", "prep_time", b"prep_time", "python_version", b"python_version", "repo", b"repo", "report_hash", b"report_hash", "server_mode", b"server_mode", "server_os", b"server_os", "session_id", b"session_id", "source", b"source", "streamlit_version", b"streamlit_version", "timezone", b"timezone", "total_load_time", b"total_load_time", "uncaught_exception", b"uncaught_exception"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___MetricsEvent: _TypeAlias = MetricsEvent  # noqa: Y015
 
@@ -226,7 +227,10 @@ class BrowserInfo(_message.Message):
         device_type: _builtins.str = ...,
         os: _builtins.str = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["browser_name", b"browser_name", "browser_version", b"browser_version", "device_type", b"device_type", "os", b"os"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___BrowserInfo: _TypeAlias = BrowserInfo  # noqa: Y015

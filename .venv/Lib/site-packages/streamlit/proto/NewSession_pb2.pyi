@@ -28,10 +28,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -116,6 +116,7 @@ class NewSession(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["app_pages", b"app_pages", "config", b"config", "custom_theme", b"custom_theme", "fragment_ids_this_run", b"fragment_ids_this_run", "initialize", b"initialize", "main_script_hash", b"main_script_hash", "main_script_path", b"main_script_path", "name", b"name", "page_script_hash", b"page_script_hash", "script_run_id", b"script_run_id"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___NewSession: _TypeAlias = NewSession  # noqa: Y015
 
@@ -161,6 +162,7 @@ class Initialize(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["environment_info", b"environment_info", "is_hello", b"is_hello", "session_id", b"session_id", "session_status", b"session_status", "user_info", b"user_info"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___Initialize: _TypeAlias = Initialize  # noqa: Y015
 
@@ -240,8 +242,11 @@ class Config(_message.Message):
         toolbar_mode: Global___Config.ToolbarMode.ValueType = ...,
         show_error_links: Global___Config.ShowErrorLinks.ValueType = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["allow_run_on_save", b"allow_run_on_save", "gather_usage_stats", b"gather_usage_stats", "hide_sidebar_nav", b"hide_sidebar_nav", "hide_top_bar", b"hide_top_bar", "max_cached_message_age", b"max_cached_message_age", "show_error_links", b"show_error_links", "toolbar_mode", b"toolbar_mode"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___Config: _TypeAlias = Config  # noqa: Y015
 
@@ -655,8 +660,11 @@ class FontFace(_message.Message):
         style: _builtins.str = ...,
         unicode_range: _builtins.str = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["family", b"family", "style", b"style", "unicode_range", b"unicode_range", "url", b"url", "weight_range", b"weight_range"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___FontFace: _TypeAlias = FontFace  # noqa: Y015
 
@@ -677,8 +685,11 @@ class FontSource(_message.Message):
         config_name: _builtins.str = ...,
         source_url: _builtins.str = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["config_name", b"config_name", "source_url", b"source_url"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___FontSource: _TypeAlias = FontSource  # noqa: Y015
 
@@ -703,8 +714,11 @@ class UserInfo(_message.Message):
         installation_id_v3: _builtins.str = ...,
         installation_id_v4: _builtins.str = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["installation_id", b"installation_id", "installation_id_v3", b"installation_id_v3", "installation_id_v4", b"installation_id_v4"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___UserInfo: _TypeAlias = UserInfo  # noqa: Y015
 
@@ -747,7 +761,10 @@ class EnvironmentInfo(_message.Message):
         server_os: _builtins.str = ...,
         has_display: _builtins.bool = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["has_display", b"has_display", "python_version", b"python_version", "server_os", b"server_os", "streamlit_version", b"streamlit_version"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___EnvironmentInfo: _TypeAlias = EnvironmentInfo  # noqa: Y015

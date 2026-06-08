@@ -26,10 +26,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -133,5 +133,6 @@ class ClientState(_message.Message):
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["cached_message_hashes", b"cached_message_hashes", "context_info", b"context_info", "fragment_id", b"fragment_id", "is_auto_rerun", b"is_auto_rerun", "page_name", b"page_name", "page_script_hash", b"page_script_hash", "query_string", b"query_string", "widget_states", b"widget_states"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___ClientState: _TypeAlias = ClientState  # noqa: Y015

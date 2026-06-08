@@ -21,6 +21,7 @@ from src.Inference.load_mamba import load_mamba_model
 from src.Inference.predict_aqi_next import predict_aqi_next
 from src.common.config import MINIO_ARTIFACTS_BUCKET, MINIO_GOLD_BUCKET
 from src.common.minio_io import get_client, load_bytes, load_json_object, load_npy, upload_csv, upload_json
+from src.common.time_utils import now_local, parse_time_local
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,13 +70,13 @@ def resolve_artifact_prefix(out_df: pd.DataFrame, artifact_run_id: str, args: ar
     if out_df.empty or "forecast_time" not in out_df.columns:
         forecast_start = ""
         forecast_end = ""
-        forecast_date = datetime.utcnow().date().isoformat()
+        forecast_date = now_local().date().isoformat()
     else:
-        forecast_times = pd.to_datetime(out_df["forecast_time"], utc=True, errors="coerce").dropna()
+        forecast_times = parse_time_local(out_df["forecast_time"]).dropna()
         if forecast_times.empty:
             forecast_start = ""
             forecast_end = ""
-            forecast_date = datetime.utcnow().date().isoformat()
+            forecast_date = now_local().date().isoformat()
         else:
             forecast_start_ts = forecast_times.min()
             forecast_end_ts = forecast_times.max()
@@ -140,7 +141,7 @@ def main() -> None:
     rows: list[dict] = []
     for i, province in enumerate(locations):
         input_end = ranges.get(str(province), {}).get("end")
-        base_time = pd.Timestamp(input_end) if input_end else pd.Timestamp.utcnow()
+        base_time = parse_time_local(pd.Series([input_end])).iloc[0] if input_end else pd.Timestamp(now_local())
         for step in range(preds.shape[1]):
             rows.append(
                 {
@@ -158,7 +159,7 @@ def main() -> None:
         if not out_path.is_absolute():
             out_path = _REPO_ROOT / out_path
     else:
-        run_id = args.artifact_run_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        run_id = args.artifact_run_id or now_local().strftime("%Y%m%d_%H%M%S")
         tmp_out_dir = Path(tempfile.mkdtemp(prefix=f"{run_id}_prediction_")).resolve()
         out_path = tmp_out_dir / "future_predictions.csv"
         cleanup_output_dir = not args.keep_local
@@ -183,7 +184,7 @@ def main() -> None:
                 "metadata": str(args.metadata or f"s3://{MINIO_ARTIFACTS_BUCKET}/mamba/province={args.province}/run_id={args.model_run_id}/training_metadata.json"),
                 "rows": len(out_df),
                 "locations": locations,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": now_local().isoformat(),
             },
         )
         print(f"Uploaded: s3://{MINIO_ARTIFACTS_BUCKET}/{artifact_prefix}/future_predictions.csv")

@@ -35,9 +35,9 @@ from streamlit.runtime.scriptrunner_utils.script_run_context import get_script_r
 _LOGGER: Final = get_logger(__name__)
 
 # Limit the number of commands to keep the page profile message small
-_MAX_TRACKED_COMMANDS: Final = 200
+_MAX_TRACKED_COMMANDS: Final = 400
 # Only track a maximum of 25 uses per unique command since some apps use
-# commands excessively (e.g. calling add_rows thousands of times in one rerun)
+# commands excessively (e.g. calling write thousands of times in one rerun)
 # making the page profile useless.
 _MAX_TRACKED_PER_COMMAND: Final = 25
 
@@ -207,7 +207,6 @@ _ATTRIBUTIONS_TO_CHECK: Final = [
     "snowflake",
     "pydantic",
     "fastapi",
-    "starlette",
     "playwright",
     "folium",
     "geopandas",
@@ -246,7 +245,7 @@ _DBUS_MACHINE_ID_PATH = "/var/lib/dbus/machine-id"
 
 _STREAMLIT_SKILL_NAMES: Final = (
     "developing-with-streamlit",
-    "finding-streamlit-skills",
+    "developing-with-streamlit-in-snowflake",
 )
 _SKILL_MARKER_FILENAME: Final = "SKILL.md"
 # (harness, project_skills_dir, home_skills_dir, agent_home_dir) - skill dirs
@@ -256,6 +255,7 @@ _HARNESSES: Final = (
     ("agents", ".agents/skills", ".agents/skills", ".agents"),
     ("claude", ".claude/skills", ".claude/skills", ".claude"),
     ("codex", ".codex/skills", ".codex/skills", ".codex"),
+    ("copilot", ".github/skills", ".copilot/skills", ".copilot"),
     ("cortex", ".cortex/skills", ".snowflake/cortex/skills", ".snowflake/cortex"),
     ("cursor", ".cursor/skills", ".cursor/skills", ".cursor"),
     ("gemini", ".gemini/skills", ".gemini/skills", ".gemini"),
@@ -292,8 +292,8 @@ def _detect_installed_skills(app_dir: str | None) -> list[str]:
 
     Returns a sorted, deduplicated list of ``"<location>:<harness>:<skill>"``
     tokens. ``location`` is ``home``, ``app``, or ``repo``; ``harness`` is one
-    of ``agents``, ``claude``, ``codex``, ``cortex``, ``cursor``, ``gemini``,
-    or ``opencode``; ``skill`` is one of ``_STREAMLIT_SKILL_NAMES``.
+    of ``agents``, ``claude``, ``codex``, ``copilot``, ``cortex``, ``cursor``,
+    ``gemini``, or ``opencode``; ``skill`` is one of ``_STREAMLIT_SKILL_NAMES``.
     Never raises: filesystem errors are swallowed and produce an empty list.
 
     The result is cached per ``app_dir`` for the lifetime of the process.
@@ -342,7 +342,7 @@ def _detect_installed_agents() -> list[str]:
     """Detect agent harnesses installed under the user's home directory.
 
     Returns a sorted, deduplicated list of harness name tokens (``agents``,
-    ``claude``, ``codex``, ``cortex``, ``cursor``, ``gemini``, ``opencode``)
+    ``claude``, ``codex``, ``copilot``, ``cortex``, ``cursor``, ``gemini``, ``opencode``)
     for each harness whose home-level config directory exists. Independent
     of whether Streamlit-specific skills are installed for that harness.
 

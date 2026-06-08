@@ -57,6 +57,7 @@ from streamlit.proto import Metric_pb2 as _Metric_pb2
 from streamlit.proto import MultiSelect_pb2 as _MultiSelect_pb2
 from streamlit.proto import NumberInput_pb2 as _NumberInput_pb2
 from streamlit.proto import PageLink_pb2 as _PageLink_pb2
+from streamlit.proto import Pagination_pb2 as _Pagination_pb2
 from streamlit.proto import PlotlyChart_pb2 as _PlotlyChart_pb2
 from streamlit.proto import Progress_pb2 as _Progress_pb2
 from streamlit.proto import Radio_pb2 as _Radio_pb2
@@ -96,6 +97,7 @@ class Element(_message.Message):
     HEIGHT_CONFIG_FIELD_NUMBER: _builtins.int
     WIDTH_CONFIG_FIELD_NUMBER: _builtins.int
     TEXT_ALIGNMENT_CONFIG_FIELD_NUMBER: _builtins.int
+    HAS_ONE_SHOT_EFFECT_FIELD_NUMBER: _builtins.int
     ALERT_FIELD_NUMBER: _builtins.int
     DATAFRAME_FIELD_NUMBER: _builtins.int
     TABLE_FIELD_NUMBER: _builtins.int
@@ -150,6 +152,12 @@ class Element(_message.Message):
     HEADING_FIELD_NUMBER: _builtins.int
     CODE_FIELD_NUMBER: _builtins.int
     MENU_BUTTON_FIELD_NUMBER: _builtins.int
+    PAGINATION_FIELD_NUMBER: _builtins.int
+    has_one_shot_effect: _builtins.bool
+    """When true, this element contains a one-shot effect (e.g., setValue,
+    selectionState, balloons) that must be processed fresh. The frontend
+    should not reuse payload references for elements with this flag set.
+    """
     @_builtins.property
     def height_config(self) -> _HeightConfig_pb2.HeightConfig:
         """Layout configuration for elements"""
@@ -265,8 +273,10 @@ class Element(_message.Message):
     @_builtins.property
     def code(self) -> _Code_pb2.Code: ...
     @_builtins.property
-    def menu_button(self) -> _MenuButton_pb2.MenuButton:
-        """Next ID: 65"""
+    def menu_button(self) -> _MenuButton_pb2.MenuButton: ...
+    @_builtins.property
+    def pagination(self) -> _Pagination_pb2.Pagination:
+        """Next ID: 67"""
 
     def __init__(
         self,
@@ -274,6 +284,7 @@ class Element(_message.Message):
         height_config: _HeightConfig_pb2.HeightConfig | None = ...,
         width_config: _WidthConfig_pb2.WidthConfig | None = ...,
         text_alignment_config: _TextAlignmentConfig_pb2.TextAlignmentConfig | None = ...,
+        has_one_shot_effect: _builtins.bool | None = ...,
         alert: _Alert_pb2.Alert | None = ...,
         dataframe: _Dataframe_pb2.Dataframe | None = ...,
         table: _Table_pb2.Table | None = ...,
@@ -328,19 +339,24 @@ class Element(_message.Message):
         heading: _Heading_pb2.Heading | None = ...,
         code: _Code_pb2.Code | None = ...,
         menu_button: _MenuButton_pb2.MenuButton | None = ...,
+        pagination: _Pagination_pb2.Pagination | None = ...,
     ) -> None: ...
-    _HasFieldArgType: _TypeAlias = _typing.Literal["_height_config", b"_height_config", "_text_alignment_config", b"_text_alignment_config", "_width_config", b"_width_config", "alert", b"alert", "audio", b"audio", "audio_input", b"audio_input", "balloons", b"balloons", "bidi_component", b"bidi_component", "button", b"button", "button_group", b"button_group", "camera_input", b"camera_input", "chat_input", b"chat_input", "checkbox", b"checkbox", "code", b"code", "color_picker", b"color_picker", "component_instance", b"component_instance", "dataframe", b"dataframe", "date_input", b"date_input", "date_time_input", b"date_time_input", "deck_gl_json_chart", b"deck_gl_json_chart", "download_button", b"download_button", "empty", b"empty", "exception", b"exception", "favicon", b"favicon", "feedback", b"feedback", "file_uploader", b"file_uploader", "graphviz_chart", b"graphviz_chart", "heading", b"heading", "height_config", b"height_config", "help_info", b"help_info", "html", b"html", "iframe", b"iframe", "imgs", b"imgs", "json", b"json", "link_button", b"link_button", "markdown", b"markdown", "menu_button", b"menu_button", "metric", b"metric", "multiselect", b"multiselect", "number_input", b"number_input", "page_link", b"page_link", "plotly_chart", b"plotly_chart", "progress", b"progress", "radio", b"radio", "selectbox", b"selectbox", "skeleton", b"skeleton", "slider", b"slider", "snow", b"snow", "space", b"space", "spinner", b"spinner", "table", b"table", "text", b"text", "text_alignment_config", b"text_alignment_config", "text_area", b"text_area", "text_input", b"text_input", "time_input", b"time_input", "toast", b"toast", "type", b"type", "vega_lite_chart", b"vega_lite_chart", "video", b"video", "width_config", b"width_config"]  # noqa: Y015
+    _HasFieldArgType: _TypeAlias = _typing.Literal["_has_one_shot_effect", b"_has_one_shot_effect", "_height_config", b"_height_config", "_text_alignment_config", b"_text_alignment_config", "_width_config", b"_width_config", "alert", b"alert", "audio", b"audio", "audio_input", b"audio_input", "balloons", b"balloons", "bidi_component", b"bidi_component", "button", b"button", "button_group", b"button_group", "camera_input", b"camera_input", "chat_input", b"chat_input", "checkbox", b"checkbox", "code", b"code", "color_picker", b"color_picker", "component_instance", b"component_instance", "dataframe", b"dataframe", "date_input", b"date_input", "date_time_input", b"date_time_input", "deck_gl_json_chart", b"deck_gl_json_chart", "download_button", b"download_button", "empty", b"empty", "exception", b"exception", "favicon", b"favicon", "feedback", b"feedback", "file_uploader", b"file_uploader", "graphviz_chart", b"graphviz_chart", "has_one_shot_effect", b"has_one_shot_effect", "heading", b"heading", "height_config", b"height_config", "help_info", b"help_info", "html", b"html", "iframe", b"iframe", "imgs", b"imgs", "json", b"json", "link_button", b"link_button", "markdown", b"markdown", "menu_button", b"menu_button", "metric", b"metric", "multiselect", b"multiselect", "number_input", b"number_input", "page_link", b"page_link", "pagination", b"pagination", "plotly_chart", b"plotly_chart", "progress", b"progress", "radio", b"radio", "selectbox", b"selectbox", "skeleton", b"skeleton", "slider", b"slider", "snow", b"snow", "space", b"space", "spinner", b"spinner", "table", b"table", "text", b"text", "text_alignment_config", b"text_alignment_config", "text_area", b"text_area", "text_input", b"text_input", "time_input", b"time_input", "toast", b"toast", "type", b"type", "vega_lite_chart", b"vega_lite_chart", "video", b"video", "width_config", b"width_config"]  # noqa: Y015
     def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
-    _ClearFieldArgType: _TypeAlias = _typing.Literal["_height_config", b"_height_config", "_text_alignment_config", b"_text_alignment_config", "_width_config", b"_width_config", "alert", b"alert", "audio", b"audio", "audio_input", b"audio_input", "balloons", b"balloons", "bidi_component", b"bidi_component", "button", b"button", "button_group", b"button_group", "camera_input", b"camera_input", "chat_input", b"chat_input", "checkbox", b"checkbox", "code", b"code", "color_picker", b"color_picker", "component_instance", b"component_instance", "dataframe", b"dataframe", "date_input", b"date_input", "date_time_input", b"date_time_input", "deck_gl_json_chart", b"deck_gl_json_chart", "download_button", b"download_button", "empty", b"empty", "exception", b"exception", "favicon", b"favicon", "feedback", b"feedback", "file_uploader", b"file_uploader", "graphviz_chart", b"graphviz_chart", "heading", b"heading", "height_config", b"height_config", "help_info", b"help_info", "html", b"html", "iframe", b"iframe", "imgs", b"imgs", "json", b"json", "link_button", b"link_button", "markdown", b"markdown", "menu_button", b"menu_button", "metric", b"metric", "multiselect", b"multiselect", "number_input", b"number_input", "page_link", b"page_link", "plotly_chart", b"plotly_chart", "progress", b"progress", "radio", b"radio", "selectbox", b"selectbox", "skeleton", b"skeleton", "slider", b"slider", "snow", b"snow", "space", b"space", "spinner", b"spinner", "table", b"table", "text", b"text", "text_alignment_config", b"text_alignment_config", "text_area", b"text_area", "text_input", b"text_input", "time_input", b"time_input", "toast", b"toast", "type", b"type", "vega_lite_chart", b"vega_lite_chart", "video", b"video", "width_config", b"width_config"]  # noqa: Y015
+    _ClearFieldArgType: _TypeAlias = _typing.Literal["_has_one_shot_effect", b"_has_one_shot_effect", "_height_config", b"_height_config", "_text_alignment_config", b"_text_alignment_config", "_width_config", b"_width_config", "alert", b"alert", "audio", b"audio", "audio_input", b"audio_input", "balloons", b"balloons", "bidi_component", b"bidi_component", "button", b"button", "button_group", b"button_group", "camera_input", b"camera_input", "chat_input", b"chat_input", "checkbox", b"checkbox", "code", b"code", "color_picker", b"color_picker", "component_instance", b"component_instance", "dataframe", b"dataframe", "date_input", b"date_input", "date_time_input", b"date_time_input", "deck_gl_json_chart", b"deck_gl_json_chart", "download_button", b"download_button", "empty", b"empty", "exception", b"exception", "favicon", b"favicon", "feedback", b"feedback", "file_uploader", b"file_uploader", "graphviz_chart", b"graphviz_chart", "has_one_shot_effect", b"has_one_shot_effect", "heading", b"heading", "height_config", b"height_config", "help_info", b"help_info", "html", b"html", "iframe", b"iframe", "imgs", b"imgs", "json", b"json", "link_button", b"link_button", "markdown", b"markdown", "menu_button", b"menu_button", "metric", b"metric", "multiselect", b"multiselect", "number_input", b"number_input", "page_link", b"page_link", "pagination", b"pagination", "plotly_chart", b"plotly_chart", "progress", b"progress", "radio", b"radio", "selectbox", b"selectbox", "skeleton", b"skeleton", "slider", b"slider", "snow", b"snow", "space", b"space", "spinner", b"spinner", "table", b"table", "text", b"text", "text_alignment_config", b"text_alignment_config", "text_area", b"text_area", "text_input", b"text_input", "time_input", b"time_input", "toast", b"toast", "type", b"type", "vega_lite_chart", b"vega_lite_chart", "video", b"video", "width_config", b"width_config"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    _WhichOneofReturnType__has_one_shot_effect: _TypeAlias = _typing.Literal["has_one_shot_effect"]  # noqa: Y015
+    _WhichOneofArgType__has_one_shot_effect: _TypeAlias = _typing.Literal["_has_one_shot_effect", b"_has_one_shot_effect"]  # noqa: Y015
     _WhichOneofReturnType__height_config: _TypeAlias = _typing.Literal["height_config"]  # noqa: Y015
     _WhichOneofArgType__height_config: _TypeAlias = _typing.Literal["_height_config", b"_height_config"]  # noqa: Y015
     _WhichOneofReturnType__text_alignment_config: _TypeAlias = _typing.Literal["text_alignment_config"]  # noqa: Y015
     _WhichOneofArgType__text_alignment_config: _TypeAlias = _typing.Literal["_text_alignment_config", b"_text_alignment_config"]  # noqa: Y015
     _WhichOneofReturnType__width_config: _TypeAlias = _typing.Literal["width_config"]  # noqa: Y015
     _WhichOneofArgType__width_config: _TypeAlias = _typing.Literal["_width_config", b"_width_config"]  # noqa: Y015
-    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["alert", "dataframe", "table", "vega_lite_chart", "audio", "audio_input", "balloons", "bidi_component", "button", "button_group", "download_button", "camera_input", "chat_input", "checkbox", "color_picker", "component_instance", "date_input", "deck_gl_json_chart", "help_info", "empty", "exception", "favicon", "feedback", "file_uploader", "graphviz_chart", "html", "iframe", "imgs", "json", "link_button", "markdown", "metric", "multiselect", "number_input", "page_link", "plotly_chart", "progress", "radio", "selectbox", "skeleton", "slider", "snow", "space", "spinner", "text", "text_area", "text_input", "time_input", "date_time_input", "toast", "video", "heading", "code", "menu_button"]  # noqa: Y015
+    _WhichOneofReturnType_type: _TypeAlias = _typing.Literal["alert", "dataframe", "table", "vega_lite_chart", "audio", "audio_input", "balloons", "bidi_component", "button", "button_group", "download_button", "camera_input", "chat_input", "checkbox", "color_picker", "component_instance", "date_input", "deck_gl_json_chart", "help_info", "empty", "exception", "favicon", "feedback", "file_uploader", "graphviz_chart", "html", "iframe", "imgs", "json", "link_button", "markdown", "metric", "multiselect", "number_input", "page_link", "plotly_chart", "progress", "radio", "selectbox", "skeleton", "slider", "snow", "space", "spinner", "text", "text_area", "text_input", "time_input", "date_time_input", "toast", "video", "heading", "code", "menu_button", "pagination"]  # noqa: Y015
     _WhichOneofArgType_type: _TypeAlias = _typing.Literal["type", b"type"]  # noqa: Y015
+    @_typing.overload
+    def WhichOneof(self, oneof_group: _WhichOneofArgType__has_one_shot_effect) -> _WhichOneofReturnType__has_one_shot_effect | None: ...
     @_typing.overload
     def WhichOneof(self, oneof_group: _WhichOneofArgType__height_config) -> _WhichOneofReturnType__height_config | None: ...
     @_typing.overload

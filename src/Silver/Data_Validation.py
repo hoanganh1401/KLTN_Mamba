@@ -36,6 +36,12 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+_SRC_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _SRC_ROOT not in sys.path:
+    sys.path.insert(0, _SRC_ROOT)
+
+from common.time_utils import now_local, parse_time_local
+
 
 # =============================
 # 0) Config & Constants
@@ -104,7 +110,7 @@ def load_bronze(client: Minio, location_key: str,
         finally:
             resp.close(); resp.release_conn()
         df = pd.read_csv(io.BytesIO(raw))
-        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df["time"] = parse_time_local(df["time"])
         return df
     except Exception as exc:
         print(f"  [WARN] Bronze not found: {path} — {exc}")
@@ -122,7 +128,7 @@ def load_silver(client: Minio, location_key: str,
         finally:
             resp.close(); resp.release_conn()
         df = pd.read_csv(io.BytesIO(raw))
-        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df["time"] = parse_time_local(df["time"])
         return df
     except Exception:
         return None
@@ -216,7 +222,7 @@ class ValidationReport:
             "location_key": self.location_key,
             "target_date":  self.target_date,
             "mode":         self.mode,
-            "validated_at": datetime.utcnow().isoformat(),
+            "validated_at": now_local().isoformat(),
             "summary": {
                 "total_checks":   len(self.checks),
                 "passed":         n_pass,
@@ -439,7 +445,7 @@ def run_validation(locations_path: str, target_date_str: str, mode: str) -> None
     summary = {
         "mode":             mode,
         "target_date":      target_date_str,
-        "validated_at":     datetime.utcnow().isoformat(),
+        "validated_at":     now_local().isoformat(),
         "total_locations":  len(all_reports),
         "passed":           sum(1 for r in all_reports if r["summary"]["critical_fails"] == 0
                                 and r["summary"]["warnings"] == 0),
@@ -478,9 +484,9 @@ def main() -> None:
     if args.date:
         target = args.date
     elif args.mode == "hourly":
-        target = datetime.utcnow().strftime("%Y-%m-%d")           # hôm nay
+        target = now_local().strftime("%Y-%m-%d")                 # hôm nay (+7)
     else:
-        target = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")  # hôm qua
+        target = (now_local() - timedelta(days=1)).strftime("%Y-%m-%d")  # hôm qua (+7)
 
     run_validation(args.locations, target, mode=args.mode)
 

@@ -24,10 +24,10 @@ import builtins as _builtins
 import sys
 import typing as _typing
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias as _TypeAlias
+if sys.version_info >= (3, 11):
+    from typing import TypeAlias as _TypeAlias, Never as _Never
 else:
-    from typing_extensions import TypeAlias as _TypeAlias
+    from typing_extensions import TypeAlias as _TypeAlias, Never as _Never
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -76,7 +76,10 @@ class Button(_message.Message):
         shortcut: _builtins.str = ...,
         icon_position: _ButtonLikeIconPosition_pb2.ButtonLikeIconPosition.ValueType = ...,
     ) -> None: ...
+    _HasFieldArgType: _TypeAlias = _Never  # noqa: Y015
+    def HasField(self, field_name: _HasFieldArgType) -> _builtins.bool: ...
     _ClearFieldArgType: _TypeAlias = _typing.Literal["default", b"default", "disabled", b"disabled", "form_id", b"form_id", "help", b"help", "icon", b"icon", "icon_position", b"icon_position", "id", b"id", "is_form_submitter", b"is_form_submitter", "label", b"label", "shortcut", b"shortcut", "type", b"type"]  # noqa: Y015
     def ClearField(self, field_name: _ClearFieldArgType) -> None: ...
+    def WhichOneof(self, oneof_group: _Never) -> None: ...
 
 Global___Button: _TypeAlias = Button  # noqa: Y015

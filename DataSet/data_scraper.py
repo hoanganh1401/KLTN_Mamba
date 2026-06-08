@@ -10,6 +10,7 @@ import os
 import time
 import argparse
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Iterator, Optional
 
 import pandas as pd
@@ -37,6 +38,8 @@ MINIO_BUCKET = os.environ.get("MINIO_BUCKET",     "air-quality")
 MINIO_SECURE = os.environ.get("MINIO_SECURE",     "false").lower() == "true"
 
 API_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+LOCAL_TZ = "Asia/Ho_Chi_Minh"
+LOCAL_ZONE = ZoneInfo(LOCAL_TZ)
 
 # Columns to fetch from Open-Meteo
 HOURLY_VARS = [
@@ -154,6 +157,25 @@ def object_path(location_key: str, year: int, month: int, day: int) -> str:
     )
 
 
+def now_local() -> datetime:
+    """Current Vietnam local time."""
+    return datetime.now(LOCAL_ZONE)
+
+
+def parse_time_local(values) -> pd.Series:
+    """
+    Parse timestamps as Vietnam local time.
+
+    Open-Meteo returns naive local timestamps when timezone=Asia/Ho_Chi_Minh,
+    while existing stored CSVs may already include +07:00. This helper keeps
+    both cases on the same local timezone.
+    """
+    ts = pd.to_datetime(values, errors="coerce")
+    if getattr(ts.dt, "tz", None) is None:
+        return ts.dt.tz_localize(LOCAL_TZ, nonexistent="shift_forward", ambiguous="NaT")
+    return ts.dt.tz_convert(LOCAL_TZ)
+
+
 # =============================
 # 2) API Fetch
 # =============================
@@ -174,7 +196,7 @@ def fetch_openmeteo(
         "latitude":   lat,
         "longitude":  lon,
         "hourly":     HOURLY_VARS,
-        "timezone":   "UTC",
+        "timezone":   LOCAL_TZ,
         "start_date": start_date,
         "end_date":   end_date,
     }
@@ -223,9 +245,9 @@ def fetch_openmeteo(
     df = pd.DataFrame(hourly)
     df.rename(columns=RENAME_MAP, inplace=True)
 
-    # Parse & gate timestamps
-    df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
-    df = df[df["time"].notna() & (df["time"] <= pd.Timestamp.now(tz="UTC"))]
+    # Parse & gate timestamps in Vietnam local time
+    df["time"] = parse_time_local(df["time"])
+    df = df[df["time"].notna() & (df["time"] <= pd.Timestamp.now(tz=LOCAL_TZ))]
 
     df["latitude"]  = js.get("latitude")
     df["longitude"] = js.get("longitude")
@@ -258,9 +280,9 @@ def save_to_minio(
     if df.empty:
         return
 
-    # Ensure time is tz-aware
+    # Ensure time is tz-aware Vietnam local time
     df = df.copy()
-    df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+    df["time"] = parse_time_local(df["time"])
 
     for (year, month, day), group in df.groupby(
         [df["time"].dt.year, df["time"].dt.month, df["time"].dt.day]
@@ -279,9 +301,7 @@ def save_to_minio(
                 resp.release_conn()
 
             existing = pd.read_csv(io.BytesIO(raw))
-            existing["time"] = pd.to_datetime(
-                existing["time"], utc=True, errors="coerce"
-            )
+            existing["time"] = parse_time_local(existing["time"])
         except Exception:
             pass  # object doesn't exist yet
 
@@ -343,7 +363,7 @@ def get_last_stored_hour(
             resp.close(); resp.release_conn()
 
         df = pd.read_csv(io.BytesIO(raw), usecols=["time"])
-        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df["time"] = parse_time_local(df["time"])
         df = df.dropna(subset=["time"])
         return df["time"].max() if not df.empty else None
     except Exception:
@@ -394,8 +414,7 @@ def find_gaps(
 
     Returns: (missing_dates, partial_dates)
     """
-    now_utc   = datetime.utcnow()
-    today     = now_utc.date()
+    today     = now_local().date()
     yesterday = today - timedelta(days=1)
     start     = today - timedelta(days=lookback_days)
 
@@ -407,7 +426,7 @@ def find_gaps(
 
     # Kiểm tra ngày có file nhưng thiếu giờ:
     # - Với ngày trong quá khứ (< today): kỳ vọng đủ 24 giờ (0:00-23:00)
-    # - Với yesterday: kỳ vọng đủ đến 23:00 UTC
+    # - Với yesterday: kỳ vọng đủ đến 23:00 giờ Việt Nam
     partial_dates: list[tuple] = []
     for d in stored_dates:
         if d < start or d > yesterday:
@@ -420,7 +439,7 @@ def find_gaps(
         # Giờ cuối kỳ vọng của ngày đó
         expected_last = pd.Timestamp(
             year=d.year, month=d.month, day=d.day,
-            hour=23, tz="UTC"
+            hour=23, tz=LOCAL_TZ
         )
         # Nếu giờ cuối được lưu < 23:00 → thiếu giờ
         if last_ts < expected_last:
@@ -499,7 +518,7 @@ def run_incremental(
     """
     client  = get_minio_client()
     session = build_http_session()
-    today   = datetime.utcnow().strftime("%Y-%m-%d")
+    today   = now_local().strftime("%Y-%m-%d")
 
     for loc in locations:
         loc_key  = loc.get("location_key") or f"{loc['latitude']}_{loc['longitude']}"
@@ -536,7 +555,7 @@ def run_incremental(
                 # → save_to_minio sẽ chỉ append các giờ mới hơn last_ts
                 date_str = partial_date.strftime("%Y-%m-%d")
                 print(f"  ↩️  Refetch partial {date_str} "
-                      f"(stored until {last_ts.strftime('%H:%M' )} UTC) …")
+                      f"(stored until {last_ts.strftime('%H:%M' )} ICT) …")
                 ok = _fetch_and_save(
                     session, client, loc,
                     start_date=date_str,
@@ -585,7 +604,7 @@ def main() -> None:
     if args.mode == "backfill":
         if not args.start_date:
             parser.error("--start-date is required for backfill mode")
-        end_date = args.end_date or datetime.utcnow().strftime("%Y-%m-%d")
+        end_date = args.end_date or now_local().strftime("%Y-%m-%d")
         run_backfill(locations, args.start_date, end_date, args.chunk_days)
     else:
         run_incremental(locations, lookback_days=args.lookback_days)

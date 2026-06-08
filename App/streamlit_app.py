@@ -18,6 +18,7 @@ for _path in (str(_REPO_ROOT), str(_SRC_ROOT)):
 
 from src.common.config import MINIO_ARTIFACTS_BUCKET, MINIO_HOST
 from src.common.minio_io import get_client, load_bytes, load_json_object
+from src.common.time_utils import parse_time_local
 
 PREDICTION_ROOT = "mamba_inference"
 
@@ -65,7 +66,7 @@ def load_prediction_csv(path: str) -> pd.DataFrame:
         raise FileNotFoundError(f"Missing s3://{MINIO_ARTIFACTS_BUCKET}/{path}")
     df = pd.read_csv(io.BytesIO(raw))
     if "forecast_time" in df.columns:
-        df["forecast_time"] = pd.to_datetime(df["forecast_time"], utc=True, errors="coerce")
+        df["forecast_time"] = parse_time_local(df["forecast_time"])
     if "y_pred" in df.columns:
         df["y_pred"] = pd.to_numeric(df["y_pred"], errors="coerce")
     return df
