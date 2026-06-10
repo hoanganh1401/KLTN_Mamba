@@ -8,9 +8,22 @@ from einops import rearrange, repeat
 
 try:
     from causal_conv1d import causal_conv1d_fn
-    from causal_conv1d.cpp_functions import causal_conv1d_fwd_function, causal_conv1d_bwd_function, causal_conv1d_update_function
 except ImportError:
     causal_conv1d_fn = None
+
+try:
+    from causal_conv1d.cpp_functions import causal_conv1d_fwd_function, causal_conv1d_bwd_function, causal_conv1d_update_function
+except ImportError:
+    try:
+        from causal_conv1d_cuda import causal_conv1d_fwd as causal_conv1d_fwd_function
+        from causal_conv1d_cuda import causal_conv1d_bwd as causal_conv1d_bwd_function
+        from causal_conv1d_cuda import causal_conv1d_update as causal_conv1d_update_function
+    except ImportError:
+        causal_conv1d_fwd_function = None
+        causal_conv1d_bwd_function = None
+        causal_conv1d_update_function = None
+
+if causal_conv1d_fn is None:
     causal_conv1d_fwd_function = None
     causal_conv1d_bwd_function = None
     causal_conv1d_update_function = None

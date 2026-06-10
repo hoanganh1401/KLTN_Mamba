@@ -324,7 +324,8 @@ def collect_predictions(
     preds, targets = [], []
     amp_enabled = use_amp and device.type == "cuda"
     for x_seq, y in loader:
-        x_seq, y = x_seq.to(device), y.to(device)
+        x_seq = x_seq.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=amp_enabled):
             pred = model(x_seq)
         preds.append(pred.detach().float().cpu().numpy())
@@ -411,36 +412,54 @@ def run_epoch(
 ) -> tuple[float, float]:
     """Chạy 1 epoch train, trả về (train_loss, elapsed_seconds)."""
     model.train()
-    running_loss = 0.0
+    running_loss = torch.zeros((), device=device)
+    seen_samples = 0
     start_t      = time.time()
     amp_enabled  = use_amp and device.type == "cuda"
     scaler       = torch.amp.GradScaler("cuda", enabled=amp_enabled)
+    sync_interval = log_interval if log_interval > 0 else 0
+    slow_batch_sec = 10.0
 
     optimizer.zero_grad(set_to_none=True)
-    pbar = tqdm(loader, desc=f"Train {epoch_idx}/{total_epochs}", leave=False)
+    loader_iter = iter(loader)
+    pbar = tqdm(
+        range(1, len(loader) + 1),
+        desc=f"Train {epoch_idx}/{total_epochs}",
+        leave=False,
+        mininterval=2.0,
+        maxinterval=10.0,
+        dynamic_ncols=False,
+    )
 
-    for step, (x_seq, y) in enumerate(pbar, start=1):
-        x_seq, y = x_seq.to(device), y.to(device)
+    for step in pbar:
+        load_t = time.time()
+        x_seq, y = next(loader_iter)
+        load_sec = time.time() - load_t
+        step_t = time.time()
+        x_seq = x_seq.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
+        transfer_sec = time.time() - step_t
 
+        forward_t = time.time()
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=amp_enabled):
             pred = model(x_seq)
             loss = criterion(pred, y)
             loss_for_backward = loss / grad_accum_steps
+        forward_sec = time.time() - forward_t
 
-        if not torch.isfinite(loss):
-            logger.warning("Non-finite loss tại epoch %d step %d, bỏ qua batch này.", epoch_idx, step)
-            optimizer.zero_grad(set_to_none=True)
-            continue
-
+        backward_t = time.time()
         if amp_enabled:
             scaler.scale(loss_for_backward).backward()
         else:
             loss_for_backward.backward()
+        backward_sec = time.time() - backward_t
 
+        optimizer_sec = 0.0
         if step % grad_accum_steps == 0 or step == len(loader):
+            optimizer_t = time.time()
             if amp_enabled:
-                scaler.unscale_(optimizer)
                 if max_grad_norm > 0:
+                    scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 scaler.step(optimizer)
                 scaler.update()
@@ -449,18 +468,56 @@ def run_epoch(
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 optimizer.step()
             optimizer.zero_grad(set_to_none=True)
+            optimizer_sec = time.time() - optimizer_t
 
-        running_loss += loss.item() * y.size(0)
-        avg_loss      = running_loss / (step * y.size(0))
-        pbar.set_postfix(loss=f"{loss.item():.5f}", avg=f"{avg_loss:.5f}")
+        batch_size = y.size(0)
+        running_loss += loss.detach() * batch_size
+        seen_samples += batch_size
 
-        if log_interval > 0 and (step % log_interval == 0 or step == len(loader)):
+        should_log = log_interval > 0 and (step % log_interval == 0 or step == len(loader))
+        should_update_progress = sync_interval > 0 and (step % sync_interval == 0 or step == len(loader))
+        if should_log or should_update_progress:
+            loss_value = float(loss.detach().cpu())
+            avg_loss = float((running_loss / max(1, seen_samples)).detach().cpu())
+            if not np.isfinite(loss_value):
+                logger.warning("Non-finite loss tại epoch %d step %d.", epoch_idx, step)
+            pbar.set_postfix(loss=f"{loss_value:.5f}", avg=f"{avg_loss:.5f}")
+
+        if should_log:
             logger.info(
                 "Epoch %d/%d | step %d/%d | batch_loss=%.6f | running_avg=%.6f",
-                epoch_idx, total_epochs, step, len(loader), loss.item(), avg_loss,
+                epoch_idx, total_epochs, step, len(loader), loss_value, avg_loss,
             )
 
-    epoch_loss = running_loss / len(loader.dataset)
+        step_sec = time.time() - step_t
+        if step_sec >= slow_batch_sec:
+            logger.warning(
+                "Slow train batch | epoch=%d/%d step=%d/%d elapsed=%.1fs | "
+                "transfer=%.3fs forward=%.3fs backward=%.3fs optimizer=%.3fs | "
+                "cuda_mem_alloc=%.1fMB cuda_mem_reserved=%.1fMB",
+                epoch_idx,
+                total_epochs,
+                step,
+                len(loader),
+                step_sec,
+                transfer_sec,
+                forward_sec,
+                backward_sec,
+                optimizer_sec,
+                torch.cuda.memory_allocated(device) / 1024**2 if device.type == "cuda" else 0.0,
+                torch.cuda.memory_reserved(device) / 1024**2 if device.type == "cuda" else 0.0,
+            )
+        if load_sec >= slow_batch_sec:
+            logger.warning(
+                "Slow data batch | epoch=%d/%d step=%d/%d data_wait=%.1fs",
+                epoch_idx,
+                total_epochs,
+                step,
+                len(loader),
+                load_sec,
+            )
+
+    epoch_loss = float((running_loss / len(loader.dataset)).detach().cpu())
     return epoch_loss, time.time() - start_t
 
 
@@ -483,7 +540,8 @@ def evaluate(
     amp_enabled = use_amp and device.type == "cuda"
 
     for x_seq, y in loader:
-        x_seq, y = x_seq.to(device), y.to(device)
+        x_seq = x_seq.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=amp_enabled):
             pred = model(x_seq)
             loss = criterion(pred, y)

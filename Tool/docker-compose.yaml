@@ -512,7 +512,7 @@ services:
         TORCHAUDIO_VERSION: "2.5.1"
         ENABLE_MAMBA_FASTPATH: "1"
         ENABLE_MAMBA_SSM: "1"
-        CAUSAL_CONV1D_VERSION: "1.4.0"
+        CAUSAL_CONV1D_VERSION: "1.5.0.post8"
         MAMBA_SSM_VERSION: "2.2.4"
         TORCH_CUDA_ARCH_LIST: "8.6"
     ports:

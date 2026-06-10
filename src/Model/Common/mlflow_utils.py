@@ -34,6 +34,24 @@ def start_mlflow_run(
     try:
         if tracking_uri:
             mlflow.set_tracking_uri(tracking_uri)
+        try:
+            client = mlflow.tracking.MlflowClient()
+            experiment = client.get_experiment_by_name(experiment_name)
+            if experiment is not None and getattr(experiment, "lifecycle_stage", None) == "deleted":
+                try:
+                    client.restore_experiment(experiment.experiment_id)
+                    logger.info("Restored deleted MLflow experiment: %s", experiment_name)
+                except Exception as restore_exc:
+                    fallback_name = f"{experiment_name} Active"
+                    logger.warning(
+                        "Could not restore deleted MLflow experiment '%s': %s. Using '%s' instead.",
+                        experiment_name,
+                        restore_exc,
+                        fallback_name,
+                    )
+                    experiment_name = fallback_name
+        except Exception as lookup_exc:
+            logger.warning("Could not inspect MLflow experiment '%s': %s", experiment_name, lookup_exc)
         mlflow.set_experiment(experiment_name)
         run = mlflow.start_run(run_name=run_name)
         if tags:

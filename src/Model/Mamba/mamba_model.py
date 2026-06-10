@@ -38,7 +38,7 @@ def _fused_fast_path_available() -> bool:
 
 
 class TimeSeriesMambaRegressor(nn.Module):
-    """Pure time-series Mamba regressor without location embedding."""
+    """Pure time-series Mamba regressor for one province/time series."""
 
     def __init__(
         self,
@@ -55,7 +55,6 @@ class TimeSeriesMambaRegressor(nn.Module):
         super().__init__()
         self.num_features = int(num_features)
         self.horizon = int(horizon)
-        self.use_location_embedding = False
         self.dropout = nn.Dropout(float(dropout))
 
         if use_fast_path is None:
@@ -93,7 +92,3 @@ class TimeSeriesMambaRegressor(nn.Module):
             x = self.dropout(x)
         x = self.norm(x)
         return self.head(x[:, -1, :])
-
-
-class TimeSeriesMambaRegressorNoLoc(TimeSeriesMambaRegressor):
-    """Backward-compatible alias for the no-location Mamba regressor."""

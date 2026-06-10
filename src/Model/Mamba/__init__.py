@@ -1,6 +1,6 @@
 """Mamba AQI model package."""
 
-from .mamba_model import TimeSeriesMambaRegressor, TimeSeriesMambaRegressorNoLoc
+from .mamba_model import TimeSeriesMambaRegressor
 
-__all__ = ["TimeSeriesMambaRegressor", "TimeSeriesMambaRegressorNoLoc"]
+__all__ = ["TimeSeriesMambaRegressor"]
 
