@@ -331,7 +331,7 @@ Trong đó:
 File:
 
 ```text
-src/Model/train_mamba_aqi.py
+src/Model/Mamba/train_mamba_aqi.py
 ```
 
 Đầu vào:
@@ -355,7 +355,7 @@ foreach ($loc in $locations) {
   $datasetRun = "gold_train_${loc}_${tag}"
   $modelRun = "mamba_${loc}_${tag}"
 
-  .\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
+  .\.venv\Scripts\python.exe src\Model\Mamba\train_mamba_aqi.py `
     --config Conf\air_quality.yaml `
     --run-id $datasetRun `
     --model-run-id $modelRun `
@@ -759,7 +759,7 @@ foreach ($loc in $locations) {
     --end-date $end `
     --run-id $datasetRun
 
-  .\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
+  .\.venv\Scripts\python.exe src\Model\Mamba\train_mamba_aqi.py `
     --config Conf\air_quality.yaml `
     --run-id $datasetRun `
     --model-run-id $modelRun `

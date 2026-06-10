@@ -15,12 +15,17 @@ openpyxl
 scikit-learn
 tqdm
 einops
+setuptools>=61.0.0
+transformers==4.44.2
 
 # Storage / API
 minio
 requests
 python-dotenv
 pyyaml
+mlflow
+psycopg2-binary
+boto3
 
 # Web App
 streamlit

@@ -16,7 +16,7 @@ for _path in (str(_REPO_ROOT), str(_SRC_ROOT), str(_MODEL_ROOT)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from src.Model.mamba_model import TimeSeriesMambaRegressor
+from src.Model.Mamba.mamba_model import TimeSeriesMambaRegressor
 
 
 def resolve_device(device: str | torch.device = "auto") -> torch.device:

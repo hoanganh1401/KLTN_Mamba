@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path("/workspace/KLTN_Mamba")
 CONFIG_PATH = PROJECT_ROOT / "Conf" / "air_quality.yaml"
-TRAIN_SCRIPT = PROJECT_ROOT / "src" / "Model" / "train_mamba_aqi.py"
+TRAIN_SCRIPT = PROJECT_ROOT / "src" / "Model" / "Mamba" / "train_mamba_aqi.py"
 INFERENCE_SCRIPT = PROJECT_ROOT / "src" / "Inference" / "run_mamba_inference.py"
 API_RUNS_DIR = PROJECT_ROOT / "runs" / "mamba_api"
 

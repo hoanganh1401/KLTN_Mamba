@@ -1,30 +1,16 @@
-# kafka-python==2.2.15
-# minio==7.1.0
-# psycopg2-binary==2.9.10
-# requests==2.31.0
-# # Logging and utilities
-# python-dateutil==2.8.2
-# # Optional: for enhanced error handling
-# urllib3==2.0.7
-# Xử lý dữ liệu
+# Runtime packages for Airflow DAG containers only.
+# Model training dependencies live in the root requirements.txt and the ts-mamba image.
+
 pandas
 numpy
 scipy
-matplotlib
-seaborn
-openpyxl
-
-# Machine Learning
 scikit-learn
 tqdm
-einops
 
-# Visualization
-plotly
-
-# Storage / API
 minio
 requests
 python-dotenv
 pyyaml
+psycopg2-binary==2.9.10
+
 apache-airflow-providers-http

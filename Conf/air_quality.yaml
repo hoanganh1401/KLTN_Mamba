@@ -3,8 +3,18 @@ project:
   target: aqi
   primary_model: mamba
 
+run:
+  name: null
+  models:
+    - mamba
+    - lstm
+    - transformer
+    - classical
+  output_root: runs
 
 data:
+  source: gold_minio
+  data_path: null
   freq: h
   time_col: time
   location_col: location_key
@@ -22,7 +32,6 @@ data:
     - co2
     - aqi
 
-
 features:
   time_features:
     - hour_sin
@@ -32,20 +41,19 @@ features:
     - day_of_week
     - is_weekend
 
-
 dataset:
-  seq_len: 96
+  prefix_template: training_dataset/run_id={run_id}
+  seq_len: 144
   pred_len: 12
   sample_stride: 1
   train_ratio: 0.7
-  val_ratio: 0.15
-  test_ratio: 0.15
-
+  val_ratio: 0.1
+  test_ratio: 0.2
 
 scaling:
   method: standard
   fit_on: train
-target_mode: absolute
+  target_mode: absolute
 
 quality:
   hard_fail_cols:
@@ -58,43 +66,143 @@ quality:
   low_coverage_col: _flag_low_coverage
   max_low_coverage_ratio: 0.5
 
-
-model:
-  name: mamba
-  input_dim: null
-  output_dim: 1
-  use_location_embedding: false
-  d_model: 128
-  n_layers: 2
-  d_ff: 256
-  dropout: 0.1
-
-
 training:
-  batch_size: 64
-  learning_rate: 0.0005
-  lr_patience: 4
-  lr_factor: 0.5
-  min_lr: 0.00001
-  epochs: 80
-  patience: 10
-  min_delta: 0.0001
   min_train_samples: 256
+  lr_t_max: null
+  min_lr: 0.00001
+  mlflow_enabled: false
+  mlflow_experiment: AQI Forecasting
+  mlflow_tracking_uri: null
+
+mamba:
+  enabled: true
+  epochs: 5
+  batch_size: 8
+  window_size: 144
+  horizon: 12
+  lr: 0.0002
   loss: huber
   seed: 42
   num_workers: 0
-  amp: true
-  auto_cpu_for_slow_mamba: true
-  weight_decay: 0.001
-  grad_accum_steps: 1
-  max_grad_norm: 1.0
+  d_model: 64
+  n_layers: 1
+  d_ff: 192
+  d_state: 16
+  d_conv: 4
+  expand: 2
+  dropout: 0.1
   device: cuda
+  amp: true
+  sample_stride: 1
+  weight_decay: 0.0003
+  grad_accum_steps: 1
+  max_grad_norm: 0.5
+  patience: 20
+  min_delta: 0.000001
+  min_lr: 0.00001
+  forecast_24h: false
+  forecast_base: null
+  forecast_out: null
+  auto_cpu_for_slow_mamba: false
 
+lstm:
+  enabled: true
+  epochs: 5
+  batch_size: 32
+  window_size: 144
+  horizon: 12
+  lr: 0.00015
+  weight_decay: 0.00008
+  max_grad_norm: 0.5
+  loss: huber
+  seed: 42
+  num_workers: 0
+  hidden_size: 128
+  d_model: 128
+  n_layers: 2
+  dropout: 0.1
+  device: cuda
+  amp: true
+  sample_stride: 1
+  grad_accum_steps: 1
+  early_stop_patience: 20
+  patience: 20
+  min_delta: 0.000001
+  min_lr: 0.00001
+  overfit_threshold: 0.05
+  predict: false
+  output_csv: null
+
+transformer:
+  enabled: true
+  epochs: 5
+  batch_size: 32
+  window_size: 144
+  horizon: 12
+  lr: 0.00015
+  weight_decay: 0.001
+  max_grad_norm: 0.7
+  loss: huber
+  seed: 42
+  num_workers: 0
+  d_model: 96
+  n_layers: 2
+  device: cuda
+  gpu: 0
+  model_id: air_quality_AQI
+  model: Transformer
+  features: MS
+  freq: h
+  label_len: 48
+  d_layers: 1
+  enc_in: 17
+  dec_in: 1
+  c_out: 1
+  d_ff: 192
+  dim_feedforward: 192
+  n_heads: 4
+  factor: 1
+  dropout: 0.2
+  embed: timeF
+  activation: gelu
+  patience: 20
+  min_delta: 0.000001
+  min_lr: 0.00001
+  lradj: none
+  des: Exp
+  inverse: true
+  amp: false
+  use_amp: false
+  sample_stride: 1
+  grad_accum_steps: 1
+
+classical:
+  enabled: true
+  models:
+    - naive
+    - moving_average
+    - arima
+    - sarima
+  horizon: 12
+  window_size: 144
+  moving_average_window: 24
+  arima_order:
+    - 2
+    - 1
+    - 2
+  sarima_order:
+    - 1
+    - 1
+    - 1
+  sarima_seasonal_order:
+    - 1
+    - 0
+    - 1
+    - 24
 
 inference:
   horizon_hours: 12
-  use_latest_hours: 96
-
+  use_latest_hours: 144
 
 minio:
   bronze_bucket: air-quality

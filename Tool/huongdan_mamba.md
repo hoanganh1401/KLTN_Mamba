@@ -182,7 +182,7 @@ foreach ($loc in $locations) {
     --end-date $end `
     --run-id $datasetRun
 
-  .\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
+  .\.venv\Scripts\python.exe src\Model\Mamba\train_mamba_aqi.py `
     --config Conf\air_quality.yaml `
     --run-id $datasetRun `
     --model-run-id $modelRun `
@@ -364,7 +364,7 @@ foreach ($loc in $locations) {
     --end-date $end `
     --run-id $datasetRun
 
-  .\.venv\Scripts\python.exe src\Model\train_mamba_aqi.py `
+  .\.venv\Scripts\python.exe src\Model\Mamba\train_mamba_aqi.py `
     --config Conf\air_quality.yaml `
     --run-id $datasetRun `
     --model-run-id $modelRun `

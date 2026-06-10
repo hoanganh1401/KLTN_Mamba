@@ -28,7 +28,7 @@ ARG TORCHVISION_VERSION=0.20.1
 ARG TORCHAUDIO_VERSION=2.5.1
 ARG ENABLE_MAMBA_FASTPATH=0
 ARG ENABLE_MAMBA_SSM=0
-ARG CAUSAL_CONV1D_VERSION=1.5.0.post8
+ARG CAUSAL_CONV1D_VERSION=1.4.0
 ARG MAMBA_SSM_VERSION=2.2.4
 ARG TORCH_CUDA_ARCH_LIST=""
 
@@ -37,7 +37,7 @@ ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST}
 ENV MAX_JOBS=1
 
 RUN python3 -m pip install --upgrade pip \
-    && python3 -m pip install --no-cache-dir wheel packaging ninja \
+    && python3 -m pip install --no-cache-dir "setuptools==69.5.1" wheel packaging ninja \
     && python3 -m pip install --no-cache-dir \
         torch==${TORCH_VERSION} \
         torchvision==${TORCHVISION_VERSION} \

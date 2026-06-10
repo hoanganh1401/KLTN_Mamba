@@ -1,8 +1,8 @@
-"""Shared data structures for time-series models.
+"""Shared data structures for AQI sequence models.
 
 `loc_ids` is kept only as metadata for reporting province/location names in
 prediction CSV files. It is not returned by `AQIDataset` and is not fed into
-the Mamba model.
+Mamba, LSTM, or Transformer models.
 """
 
 from __future__ import annotations

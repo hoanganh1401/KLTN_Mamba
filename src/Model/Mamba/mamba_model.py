@@ -8,8 +8,8 @@ time-series features with shape (batch, seq_len, num_features).
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 import torch
@@ -47,6 +47,10 @@ class TimeSeriesMambaRegressor(nn.Module):
         n_layers: int = 2,
         horizon: int = 1,
         dropout: float = 0.0,
+        d_state: int = 16,
+        d_conv: int = 4,
+        expand: int = 2,
+        use_fast_path: bool | None = None,
     ) -> None:
         super().__init__()
         self.num_features = int(num_features)
@@ -54,13 +58,22 @@ class TimeSeriesMambaRegressor(nn.Module):
         self.use_location_embedding = False
         self.dropout = nn.Dropout(float(dropout))
 
-        use_fast_path_requested = os.environ.get("MAMBA_USE_FASTPATH", "0").lower() in {"1", "true", "yes"}
-        use_fast_path = use_fast_path_requested and _fused_fast_path_available()
+        if use_fast_path is None:
+            use_fast_path_requested = os.environ.get("MAMBA_USE_FASTPATH", "0").lower() in {"1", "true", "yes"}
+            use_fast_path = use_fast_path_requested and _fused_fast_path_available()
+        else:
+            use_fast_path = bool(use_fast_path) and _fused_fast_path_available()
 
         self.input_proj = nn.Linear(self.num_features, d_model)
         self.layers = nn.ModuleList(
             [
-                Mamba(d_model=d_model, d_state=16, d_conv=4, expand=2, use_fast_path=use_fast_path)
+                Mamba(
+                    d_model=d_model,
+                    d_state=d_state,
+                    d_conv=d_conv,
+                    expand=expand,
+                    use_fast_path=use_fast_path,
+                )
                 for _ in range(n_layers)
             ]
         )
