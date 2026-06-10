@@ -44,7 +44,7 @@ RUN python3 -m pip install --upgrade pip \
         torchaudio==${TORCHAUDIO_VERSION} \
         --index-url ${TORCH_INDEX_URL} \
     && python3 -m pip install --no-cache-dir -r requirements.txt \
-    && python3 -m pip install --no-cache-dir streamlit numpy pandas scikit-learn \
+    && python3 -m pip install --no-cache-dir streamlit fastapi uvicorn numpy pandas scikit-learn \
     && if [ "${ENABLE_MAMBA_FASTPATH}" = "1" ]; then \
            MAX_JOBS=1 python3 -m pip install --no-cache-dir "causal-conv1d==${CAUSAL_CONV1D_VERSION}" --no-build-isolation; \
        else \
@@ -59,6 +59,6 @@ RUN if [ "${ENABLE_MAMBA_SSM}" = "1" ]; then \
 
 COPY . /workspace/KLTN_Mamba
 
-EXPOSE 8501
+EXPOSE 8501 8000
 
-CMD ["python3", "-m", "streamlit", "run", "App/streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["bash", "-lc", "python3 -m uvicorn api:app --host 0.0.0.0 --port 8000 & api_pid=$!; sleep 5; kill -0 ${api_pid} || exit 1; exec python3 -m streamlit run App/streamlit_app.py --server.port=8501 --server.address=0.0.0.0"]

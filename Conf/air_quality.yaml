@@ -101,6 +101,3 @@ minio:
   silver_bucket: air-quality-silver
   gold_bucket: air-quality-gold
   artifacts_bucket: air-quality-artifacts
-
-
-

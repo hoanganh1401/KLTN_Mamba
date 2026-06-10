@@ -24,6 +24,8 @@ pyyaml
 
 # Web App
 streamlit
+fastapi
+uvicorn
 
 # Torch is installed separately by Tool/Dockerfile.mamba.
 # Airflow containers install Tool/requirements.txt on startup.

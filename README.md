@@ -30,9 +30,15 @@ Trong repo hien co DAG chinh o:
 - [Airflow/dags/air_quality_hourly.py](Airflow/dags/air_quality_hourly.py): `air_quality_hourly`
   - Chay moi gio: ingest incremental -> validate hourly -> process Silver -> build Gold features.
 - [Airflow/dags/air_quality_daily_training.py](Airflow/dags/air_quality_daily_training.py): `air_quality_daily_training`
-  - Chay 01:00 hang ngay: validate daily -> refresh Gold features -> prepare training dataset -> train Mamba -> prepare inference input -> run inference.
+  - Chay 01:00 hang ngay: validate daily -> refresh Gold features -> prepare training dataset -> call Mamba API train -> prepare inference input -> call Mamba API inference.
 
 [Airflow/dags/dags_incremental.py](Airflow/dags/dags_incremental.py) va [Airflow/dags/test.py](Airflow/dags/test.py) chi con la file deprecated, khong tao DAG rieng de tranh trung `dag_id`.
+
+Mamba train/inference duoc chay qua FastAPI trong container `ts-mamba`:
+- API file: [api.py](api.py)
+- Internal URL cho Airflow: `http://ts-mamba:8000`
+- Airflow connection env: `AIRFLOW_CONN_MAMBA_API=http://ts-mamba:8000`
+- Health check nhanh tu host: `http://localhost:8000/health`
 
 De chay:
 1. Vao Airflow UI

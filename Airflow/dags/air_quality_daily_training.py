@@ -2,35 +2,67 @@
 Daily Air Quality training and inference DAG.
 
 Runs the completed-day path:
-daily validation -> Gold features -> training dataset -> Mamba training
--> inference input -> prediction artifacts.
+daily validation -> Gold features -> training dataset -> Mamba API training
+-> inference input -> Mamba API prediction artifacts.
 """
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.providers.http.operators.http import HttpOperator
+from airflow.utils.task_group import TaskGroup
 
 PROJECT_ROOT = "/opt/Project"
 DATASET_DIR = f"{PROJECT_ROOT}/Dataset"
 SRC_DIR = f"{PROJECT_ROOT}/src"
-AIRFLOW_TMP_DIR = "/opt/airflow/aqi_artifacts"
 
 LOCATIONS_PATH = f"{DATASET_DIR}/locations.jsonl"
 PROJECT_CONFIG = f"{PROJECT_ROOT}/Conf/air_quality.yaml"
+MAMBA_CONFIG = "/workspace/KLTN_Mamba/Conf/air_quality.yaml"
 
 VALIDATION_SCRIPT = f"{SRC_DIR}/Silver/Data_Validation.py"
 GOLD_FEATURE_SCRIPT = f"{SRC_DIR}/Gold/gold_feature_engineering.py"
 PREPARE_TRAINING_SCRIPT = f"{SRC_DIR}/Gold/prepare_training_dataset.py"
-TRAIN_MAMBA_SCRIPT = f"{SRC_DIR}/Model/train_mamba_aqi.py"
 PREPARE_INFERENCE_SCRIPT = f"{SRC_DIR}/Gold/prepare_inference_input.py"
-RUN_INFERENCE_SCRIPT = f"{SRC_DIR}/Inference/run_mamba_inference.py"
 
 RUN_ID = "daily_{{ ds_nodash }}"
-MODEL_RUN_ID = f"mamba_{RUN_ID}"
-MODEL_OUT_DIR = f"{AIRFLOW_TMP_DIR}/{RUN_ID}/model"
+
+
+def load_location_keys(path: str) -> list[str]:
+    """Read province keys at DAG-parse time to create one training chain per province."""
+    dag_project_root = Path(__file__).resolve().parents[2]
+    candidates = [
+        Path(path),
+        dag_project_root / "DataSet" / "locations.jsonl",
+        dag_project_root / "Dataset" / "locations.jsonl",
+    ]
+    location_path = next((candidate for candidate in candidates if candidate.exists()), None)
+    if location_path is None:
+        return []
+
+    keys: list[str] = []
+    with location_path.open(encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            key = item.get("location_key")
+            if key:
+                keys.append(str(key))
+    return keys
+
+
+def task_suffix(location_key: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_]+", "_", location_key).strip("_").lower()
+
+
+LOCATION_KEYS = load_location_keys(LOCATIONS_PATH)
 
 COMMON_ENV = {
     "PYTHONPATH": f"{PROJECT_ROOT}:{SRC_DIR}",
@@ -54,7 +86,7 @@ default_args = {
 
 with DAG(
     dag_id="air_quality_daily_training",
-    description="Daily validation, training dataset build, Mamba training, and inference",
+    description="Daily validation, dataset build, Mamba API training, and Mamba API inference",
     default_args=default_args,
     schedule="0 1 * * *",
     start_date=datetime(2025, 4, 1),
@@ -86,68 +118,91 @@ with DAG(
         execution_timeout=timedelta(minutes=45),
     )
 
-    prepare_training_dataset = BashOperator(
-        task_id="prepare_training_dataset",
-        bash_command=(
-            f"python {PREPARE_TRAINING_SCRIPT} "
-            f"--locations {LOCATIONS_PATH} "
-            f"--config {PROJECT_CONFIG} "
-            "--end-date {{ ds }} "
-            "--days {{ var.value.get('AQI_TRAIN_LOOKBACK_DAYS', '180') }} "
-            f"--run-id {RUN_ID}"
-        ),
-        env=COMMON_ENV,
-        execution_timeout=timedelta(hours=1),
-    )
+    if not LOCATION_KEYS:
+        raise FileNotFoundError(f"No location keys found at {LOCATIONS_PATH}")
 
-    train_mamba = BashOperator(
-        task_id="train_mamba",
-        bash_command=(
-            f"mkdir -p {MODEL_OUT_DIR} && "
-            f"python {TRAIN_MAMBA_SCRIPT} "
-            f"--config {PROJECT_CONFIG} "
-            f"--run-id {RUN_ID} "
-            f"--model-run-id {MODEL_RUN_ID} "
-            f"--out-dir {MODEL_OUT_DIR} "
-            "--keep-local"
-        ),
-        env=COMMON_ENV,
-        execution_timeout=timedelta(hours=6),
-    )
+    previous_tail = refresh_gold_features
+    with TaskGroup(group_id="train_infer_each_province") as per_province:
+        for location_key in LOCATION_KEYS:
+            suffix = task_suffix(location_key)
+            province_run_id = f"{RUN_ID}__{location_key}"
+            model_run_id = f"mamba_{province_run_id}"
 
-    prepare_inference_input = BashOperator(
-        task_id="prepare_inference_input",
-        bash_command=(
-            f"python {PREPARE_INFERENCE_SCRIPT} "
-            f"--locations {LOCATIONS_PATH} "
-            f"--config {PROJECT_CONFIG} "
-            "--end-date {{ ds }} "
-            "--lookback-days {{ var.value.get('AQI_INFERENCE_LOOKBACK_DAYS', '14') }} "
-            f"--run-id {RUN_ID} "
-            f"--output-run-id {RUN_ID}"
-        ),
-        env=COMMON_ENV,
-        execution_timeout=timedelta(minutes=45),
-    )
+            prepare_training_dataset = BashOperator(
+                task_id=f"prepare_training_dataset_{suffix}",
+                bash_command=(
+                    f"python {PREPARE_TRAINING_SCRIPT} "
+                    f"--locations {LOCATIONS_PATH} "
+                    f"--location-keys {location_key} "
+                    f"--config {PROJECT_CONFIG} "
+                    "--start-date {{ var.value.get('AQI_TRAIN_START_DATE', '2025-01-01') }} "
+                    "--end-date {{ ds }} "
+                    f"--run-id {province_run_id}"
+                ),
+                env=COMMON_ENV,
+                execution_timeout=timedelta(hours=1),
+            )
 
-    run_inference = BashOperator(
-        task_id="run_inference",
-        bash_command=(
-            f"python {RUN_INFERENCE_SCRIPT} "
-            f"--inference-run-id {RUN_ID} "
-            f"--checkpoint {MODEL_OUT_DIR}/best_mamba_aqi.pt "
-            f"--metadata {MODEL_OUT_DIR}/training_metadata.json "
-            f"--artifact-run-id {RUN_ID}"
-        ),
-        env=COMMON_ENV,
-        execution_timeout=timedelta(hours=1),
-    )
+            train_mamba = HttpOperator(
+                task_id=f"train_mamba_{suffix}",
+                http_conn_id="mamba_api",
+                endpoint="/train",
+                method="POST",
+                data=json.dumps(
+                    {
+                        "run_id": province_run_id,
+                        "model_run_id": model_run_id,
+                        "config": MAMBA_CONFIG,
+                        "keep_local": True,
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+                log_response=True,
+                extra_options={"timeout": 21600},
+                execution_timeout=timedelta(hours=6),
+            )
 
-    (
-        validate_daily
-        >> refresh_gold_features
-        >> prepare_training_dataset
-        >> train_mamba
-        >> prepare_inference_input
-        >> run_inference
-    )
+            prepare_inference_input = BashOperator(
+                task_id=f"prepare_inference_input_{suffix}",
+                bash_command=(
+                    f"python {PREPARE_INFERENCE_SCRIPT} "
+                    f"--locations {LOCATIONS_PATH} "
+                    f"--location-keys {location_key} "
+                    f"--config {PROJECT_CONFIG} "
+                    "--end-date {{ ds }} "
+                    "--lookback-days {{ var.value.get('AQI_INFERENCE_LOOKBACK_DAYS', '14') }} "
+                    f"--run-id {province_run_id} "
+                    f"--output-run-id {province_run_id}"
+                ),
+                env=COMMON_ENV,
+                execution_timeout=timedelta(minutes=45),
+            )
+
+            run_inference = HttpOperator(
+                task_id=f"run_inference_{suffix}",
+                http_conn_id="mamba_api",
+                endpoint="/inference",
+                method="POST",
+                data=json.dumps(
+                    {
+                        "inference_run_id": province_run_id,
+                        "model_run_id": model_run_id,
+                        "artifact_run_id": province_run_id,
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+                log_response=True,
+                extra_options={"timeout": 3600},
+                execution_timeout=timedelta(hours=1),
+            )
+
+            previous_tail >> prepare_training_dataset
+            (
+                prepare_training_dataset
+                >> train_mamba
+                >> prepare_inference_input
+                >> run_inference
+            )
+            previous_tail = run_inference
+
+    validate_daily >> refresh_gold_features >> per_province

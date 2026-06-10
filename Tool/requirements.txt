@@ -27,6 +27,4 @@ minio
 requests
 python-dotenv
 pyyaml
-
-# Web app
-streamlit
+apache-airflow-providers-http

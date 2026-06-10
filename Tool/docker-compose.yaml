@@ -84,6 +84,11 @@ x-airflow-common:
     MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-admin}
     MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-admin123}
     MINIO_BUCKET: ${MINIO_BUCKET:-air-quality}
+    MINIO_SILVER_BUCKET: ${MINIO_SILVER_BUCKET:-air-quality-silver}
+    MINIO_GOLD_BUCKET: ${MINIO_GOLD_BUCKET:-air-quality-gold}
+    MINIO_ARTIFACTS_BUCKET: ${MINIO_ARTIFACTS_BUCKET:-air-quality-artifacts}
+    MINIO_SECURE: ${MINIO_SECURE:-false}
+    AIRFLOW_CONN_MAMBA_API: ${AIRFLOW_CONN_MAMBA_API:-http://ts-mamba:8000}
     WAQI_API_KEY: ${WAQI_API_KEY:-4ab752a4-5aaf-48dc-8130-837c88e9efbe}
   volumes:
     - ../Airflow/dags:/opt/Project/Airflow/dags
@@ -238,6 +243,8 @@ services:
         condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
+      ts-mamba:
+        condition: service_healthy
 
 
   airflow-triggerer:
@@ -448,6 +455,7 @@ services:
         TORCH_CUDA_ARCH_LIST: "8.6"
     ports:
       - "8501:8501"
+      - "8000:8000"
     volumes:
       - ..:/workspace/KLTN_Mamba
     environment:
@@ -464,6 +472,12 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     gpus: all
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
 volumes:

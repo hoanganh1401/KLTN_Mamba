@@ -17,7 +17,7 @@ for _path in (str(_REPO_ROOT), str(_SRC_ROOT), str(_MODEL_ROOT)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from src.Inference.load_mamba import load_mamba_model
+from src.Inference.load_mamba import load_mamba_model, resolve_device
 from src.Inference.predict_aqi_next import predict_aqi_next
 from src.common.config import MINIO_ARTIFACTS_BUCKET, MINIO_GOLD_BUCKET
 from src.common.minio_io import get_client, load_bytes, load_json_object, load_npy, upload_csv, upload_json
@@ -117,10 +117,11 @@ def main() -> None:
 
     checkpoint_path, metadata_path, tmp_model_dir = resolve_model_files_from_minio(client, args)
 
+    device = resolve_device(args.device)
     model, train_meta = load_mamba_model(
         checkpoint_path,
         metadata_path=metadata_path,
-        device=args.device,
+        device=device,
     )
     target_norm = train_meta.get("target_normalization") or {}
     y_mean = target_norm.get("mean")
@@ -129,7 +130,7 @@ def main() -> None:
     preds = predict_aqi_next(
         model,
         x_infer,
-        device=args.device,
+        device=device,
         y_mean=y_mean,
         y_std=y_std,
         use_amp=args.amp,
