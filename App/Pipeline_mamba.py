@@ -463,7 +463,7 @@ def train_pipeline(
         out_dir = run_dir
     os.makedirs(out_dir, exist_ok=True)
 
-    model_path = os.path.join(out_dir, "best_mamba.pt")
+    model_path = os.path.join(out_dir, "best_mamba_aqi.pt")
     metrics_path = os.path.join(out_dir, "metrics_history.csv")
     future_pred_path = os.path.join(out_dir, forecast_file_name)
 

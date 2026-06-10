@@ -533,6 +533,7 @@ def upload_training_outputs_to_minio(
         prefix = f"mamba/run_id={run_id}"
     files = {
         "best_mamba_aqi.pt": "application/octet-stream",
+        "metrics.json": "application/json",
         "metrics_history.csv": "text/csv",
         "test_predictions.csv": "text/csv",
         "training_metadata.json": "application/json",
@@ -899,6 +900,7 @@ def main() -> None:
 
     df = None
     feature_cols = []
+    dataset_meta = None
     if args.dataset_prefix:
         logger.info("Loading prepared training dataset: s3://%s/%s", MINIO_GOLD_BUCKET, args.dataset_prefix)
         train, val, test, dataset_meta = load_prepared_dataset_from_minio(args.dataset_prefix)
@@ -1057,6 +1059,8 @@ def main() -> None:
 
     # Training loop
     best_val_loss  = float("inf")
+    best_epoch     = 0
+    best_val_metrics = None
     best_path      = os.path.join(args.out_dir, "best_mamba_aqi.pt")
     history_path   = os.path.join(args.out_dir, "metrics_history.csv")
     epochs_without_improvement = 0
@@ -1106,6 +1110,8 @@ def main() -> None:
 
         if val_metrics["loss"] < best_val_loss - args.min_delta:
             best_val_loss = val_metrics["loss"]
+            best_epoch = epoch
+            best_val_metrics = dict(val_metrics)
             torch.save(model.state_dict(), best_path)
             epochs_without_improvement = 0
             logger.info("→ Checkpoint mới: %s", best_path)
@@ -1144,6 +1150,22 @@ def main() -> None:
     )
     logger.info("Test predictions saved: %s", prediction_path)
 
+    best_val_metrics = best_val_metrics or {}
+    metrics_path = Path(args.out_dir) / "metrics.json"
+    metrics_summary = {
+        "val_norm_mae": best_val_metrics.get("mae_norm", float("nan")),
+        "val_norm_mse": best_val_metrics.get("loss", float("nan")),
+        "val_norm_rmse": best_val_metrics.get("rmse_norm", float("nan")),
+        "val_norm_r2": best_val_metrics.get("r2", float("nan")),
+        "test_norm_mae": test_metrics.get("mae_norm", float("nan")),
+        "test_norm_mse": test_metrics.get("loss", float("nan")),
+        "test_norm_rmse": test_metrics.get("rmse_norm", float("nan")),
+        "test_norm_r2": test_metrics.get("r2", float("nan")),
+        "best_epoch": best_epoch,
+        "final_gap": test_metrics.get("r2", float("nan")) - best_val_metrics.get("r2", float("nan")),
+    }
+    metrics_path.write_text(json.dumps(metrics_summary, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
     metadata_path = Path(args.out_dir) / "training_metadata.json"
     training_metadata = {
         "train_run_id": train_run_id,
@@ -1167,6 +1189,7 @@ def main() -> None:
             "std": y_std,
         },
         "test_metrics": test_metrics,
+        "metrics_file": str(metrics_path),
         "prediction_file": str(prediction_path),
         "model": {
             "d_model": args.d_model,
