@@ -150,6 +150,17 @@ def _cli_has(args: argparse.Namespace, option: str) -> bool:
     return option in getattr(args, "_cli_args", set())
 
 
+def _mlflow_run_name(model_type: str, run_id: str, province: str | None) -> str:
+    run_id = str(run_id)
+    if province and run_id.startswith(f"{model_type}_{province}_"):
+        return run_id
+    if run_id.startswith(f"{model_type}_"):
+        return run_id
+    if province:
+        return f"{model_type}_{province}_{run_id}"
+    return f"{model_type}_{run_id}"
+
+
 def apply_config(args: argparse.Namespace) -> argparse.Namespace:
     project_cfg = load_project_config(args.config)
     data_cfg = project_cfg.get("data", {})
@@ -306,16 +317,23 @@ def main() -> None:
     logger.info("Device: %s | AMP: %s | scheduler=CosineAnnealingLR(T_max=%d, eta_min=%.2e)", device, use_amp, lr_t_max, args.min_lr)
 
     mlflow = None
+    province = _resolve_single_province(dataset_meta)
+    scope = "single_province" if province else "multi_province"
     if args.mlflow_enabled:
         mlflow, _run = start_mlflow_run(
             logger=logger,
             experiment_name=args.mlflow_experiment,
-            run_name=f"{args.model_type}_{train_run_id}",
+            run_name=_mlflow_run_name(args.model_type, train_run_id, province),
             tracking_uri=args.mlflow_tracking_uri,
             tags={
                 "model_type": args.model_type,
                 "dataset_prefix": args.dataset_prefix,
-                "province": _resolve_single_province(dataset_meta),
+                "dataset_run_id": args.run_id,
+                "model_run_id": train_run_id,
+                "province": province,
+                "scope": scope,
+                "window_size": args.window_size,
+                "horizon": args.horizon,
             },
         )
     else:
@@ -486,8 +504,8 @@ def main() -> None:
         training_metadata = {
             "train_run_id": train_run_id,
             "dataset_prefix": args.dataset_prefix,
-            "province": _resolve_single_province(dataset_meta),
-            "scope": "single_province" if _resolve_single_province(dataset_meta) else "multi_province",
+            "province": province,
+            "scope": scope,
             "model_type": args.model_type,
             "target_col": args.target_col,
             "feature_cols": feature_cols,
