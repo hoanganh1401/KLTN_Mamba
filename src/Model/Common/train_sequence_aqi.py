@@ -170,17 +170,22 @@ def apply_config(args: argparse.Namespace) -> argparse.Namespace:
         args.epochs = int(_cfg_get(model_cfg, "epochs", default=training_cfg.get("epochs", args.epochs)))
     if not _cli_has(args, "--batch-size"):
         args.batch_size = int(_cfg_get(model_cfg, "batch_size", default=training_cfg.get("batch_size", args.batch_size)))
-    args.lr = float(_cfg_get(model_cfg, "lr", "learning_rate", default=training_cfg.get("learning_rate", args.lr)))
-    args.weight_decay = float(_cfg_get(model_cfg, "weight_decay", default=training_cfg.get("weight_decay", args.weight_decay)))
+    if not _cli_has(args, "--lr"):
+        args.lr = float(_cfg_get(model_cfg, "lr", "learning_rate", default=training_cfg.get("learning_rate", args.lr)))
+    if not _cli_has(args, "--weight-decay"):
+        args.weight_decay = float(_cfg_get(model_cfg, "weight_decay", default=training_cfg.get("weight_decay", args.weight_decay)))
     args.patience = int(_cfg_get(model_cfg, "patience", "early_stop_patience", default=training_cfg.get("patience", args.patience)))
     args.min_delta = float(_cfg_get(model_cfg, "min_delta", default=training_cfg.get("min_delta", args.min_delta)))
     args.min_train_samples = int(training_cfg.get("min_train_samples", args.min_train_samples))
     args.loss = str(_cfg_get(model_cfg, "loss", default=training_cfg.get("loss", args.loss)))
     args.seed = int(_cfg_get(model_cfg, "seed", default=training_cfg.get("seed", args.seed)))
-    args.num_workers = int(_cfg_get(model_cfg, "num_workers", default=training_cfg.get("num_workers", args.num_workers)))
+    if not _cli_has(args, "--num-workers"):
+        args.num_workers = int(_cfg_get(model_cfg, "num_workers", default=training_cfg.get("num_workers", args.num_workers)))
     args.amp = _cfg_bool(_cfg_get(model_cfg, "amp", "use_amp", default=training_cfg.get("amp")), args.amp)
-    args.grad_accum_steps = int(_cfg_get(model_cfg, "grad_accum_steps", default=training_cfg.get("grad_accum_steps", args.grad_accum_steps)))
-    args.max_grad_norm = float(_cfg_get(model_cfg, "max_grad_norm", default=training_cfg.get("max_grad_norm", args.max_grad_norm)))
+    if not _cli_has(args, "--grad-accum-steps"):
+        args.grad_accum_steps = int(_cfg_get(model_cfg, "grad_accum_steps", default=training_cfg.get("grad_accum_steps", args.grad_accum_steps)))
+    if not _cli_has(args, "--max-grad-norm"):
+        args.max_grad_norm = float(_cfg_get(model_cfg, "max_grad_norm", default=training_cfg.get("max_grad_norm", args.max_grad_norm)))
     lr_t_max_cfg = _cfg_get(model_cfg, "lr_t_max", "t_max", default=training_cfg.get("lr_t_max", training_cfg.get("t_max", args.lr_t_max)))
     args.lr_t_max = int(lr_t_max_cfg) if lr_t_max_cfg is not None else None
     args.min_lr = float(_cfg_get(model_cfg, "min_lr", default=training_cfg.get("min_lr", args.min_lr)))
@@ -294,6 +299,8 @@ def main() -> None:
     test_loader = DataLoader(AQIDataset(test), shuffle=False, **loader_kwargs)
 
     model = build_model(args, num_features=train.x_seq.shape[-1]).to(device)
+    if args.model_type == "mamba":
+        logger.info("Mamba fused fast path active: %s", bool(getattr(model, "use_fast_path", False)))
     criterion = nn.HuberLoss(delta=1.0) if args.loss == "huber" else nn.MSELoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     lr_t_max = args.lr_t_max or args.epochs

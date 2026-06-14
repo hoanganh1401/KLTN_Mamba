@@ -70,22 +70,22 @@ training:
   min_train_samples: 256
   lr_t_max: null
   min_lr: 0.00001
-  mlflow_enabled: false
+  mlflow_enabled: true
   mlflow_experiment: AQI Forecasting
-  mlflow_tracking_uri: null
+  mlflow_tracking_uri: http://mlflow:5000
 
 mamba:
   enabled: true
-  epochs: 5
-  batch_size: 8
+  epochs: 150
+  batch_size: 32
   window_size: 144
   horizon: 12
   lr: 0.0002
   loss: huber
   seed: 42
   num_workers: 0
-  d_model: 64
-  n_layers: 1
+  d_model: 128
+  n_layers: 3
   d_ff: 192
   d_state: 16
   d_conv: 4
@@ -96,7 +96,7 @@ mamba:
   sample_stride: 1
   weight_decay: 0.0003
   grad_accum_steps: 1
-  max_grad_norm: 0.5
+  max_grad_norm: 0
   patience: 20
   min_delta: 0.000001
   min_lr: 0.00001
@@ -107,7 +107,7 @@ mamba:
 
 lstm:
   enabled: true
-  epochs: 5
+  epochs: 150
   batch_size: 32
   window_size: 144
   horizon: 12
@@ -135,7 +135,7 @@ lstm:
 
 transformer:
   enabled: true
-  epochs: 5
+  epochs: 150
   batch_size: 32
   window_size: 144
   horizon: 12

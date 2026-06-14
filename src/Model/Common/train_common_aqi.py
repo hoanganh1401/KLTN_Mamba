@@ -411,23 +411,25 @@ def run_epoch(
 ) -> tuple[float, float]:
     """Chạy 1 epoch train, trả về (train_loss, elapsed_seconds)."""
     model.train()
-    running_loss = 0.0
+    running_loss = torch.zeros((), device=device)
+    seen_samples = 0
     start_t      = time.time()
     amp_enabled  = use_amp and device.type == "cuda"
     scaler       = torch.amp.GradScaler("cuda", enabled=amp_enabled)
 
     optimizer.zero_grad(set_to_none=True)
-    pbar = tqdm(loader, desc=f"Train {epoch_idx}/{total_epochs}", leave=False)
+    pbar = tqdm(loader, desc=f"Train {epoch_idx}/{total_epochs}", leave=False, mininterval=2.0)
 
     for step, (x_seq, y) in enumerate(pbar, start=1):
-        x_seq, y = x_seq.to(device), y.to(device)
+        x_seq = x_seq.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
 
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=amp_enabled):
             pred = model(x_seq)
             loss = criterion(pred, y)
             loss_for_backward = loss / grad_accum_steps
 
-        if not torch.isfinite(loss):
+        if not torch.isfinite(loss.detach()):
             logger.warning("Non-finite loss tại epoch %d step %d, bỏ qua batch này.", epoch_idx, step)
             optimizer.zero_grad(set_to_none=True)
             continue
@@ -439,8 +441,8 @@ def run_epoch(
 
         if step % grad_accum_steps == 0 or step == len(loader):
             if amp_enabled:
-                scaler.unscale_(optimizer)
                 if max_grad_norm > 0:
+                    scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 scaler.step(optimizer)
                 scaler.update()
@@ -450,17 +452,21 @@ def run_epoch(
                 optimizer.step()
             optimizer.zero_grad(set_to_none=True)
 
-        running_loss += loss.item() * y.size(0)
-        avg_loss      = running_loss / (step * y.size(0))
-        pbar.set_postfix(loss=f"{loss.item():.5f}", avg=f"{avg_loss:.5f}")
+        batch_size = y.size(0)
+        running_loss += loss.detach() * batch_size
+        seen_samples += batch_size
 
-        if log_interval > 0 and (step % log_interval == 0 or step == len(loader)):
+        should_log = log_interval > 0 and (step % log_interval == 0 or step == len(loader))
+        if should_log:
+            loss_value = float(loss.detach().cpu())
+            avg_loss = float((running_loss / max(1, seen_samples)).detach().cpu())
+            pbar.set_postfix(loss=f"{loss_value:.5f}", avg=f"{avg_loss:.5f}")
             logger.info(
                 "Epoch %d/%d | step %d/%d | batch_loss=%.6f | running_avg=%.6f",
-                epoch_idx, total_epochs, step, len(loader), loss.item(), avg_loss,
+                epoch_idx, total_epochs, step, len(loader), loss_value, avg_loss,
             )
 
-    epoch_loss = running_loss / len(loader.dataset)
+    epoch_loss = float((running_loss / len(loader.dataset)).detach().cpu())
     return epoch_loss, time.time() - start_t
 
 
