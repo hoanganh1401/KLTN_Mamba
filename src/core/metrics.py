@@ -25,12 +25,33 @@ def compute_metrics(
     if len(y_true) == 0:
         raise ValueError("y_true and y_pred must not be empty.")
 
+    finite_mask = np.isfinite(y_true) & np.isfinite(y_pred)
+    nonfinite_count = int(len(y_true) - finite_mask.sum())
+    if nonfinite_count:
+        y_true = y_true[finite_mask]
+        y_pred = y_pred[finite_mask]
+
+    if len(y_true) == 0:
+        return {
+            "mae": float("nan"),
+            "rmse": float("nan"),
+            "r2": float("nan"),
+            "mse": float("nan"),
+            "nonfinite_count": nonfinite_count,
+        }
+
     mse = float(mean_squared_error(y_true, y_pred))
     rmse = float(np.sqrt(mse))
     mae = float(mean_absolute_error(y_true, y_pred))
     r2 = float(r2_score(y_true, y_pred))
 
-    return {"mae": mae, "rmse": rmse, "r2": r2, "mse": mse}
+    return {
+        "mae": mae,
+        "rmse": rmse,
+        "r2": r2,
+        "mse": mse,
+        "nonfinite_count": nonfinite_count,
+    }
 
 
 def denormalize(arr: np.ndarray, mean: float, std: float) -> np.ndarray:

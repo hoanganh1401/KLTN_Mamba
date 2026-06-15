@@ -504,12 +504,18 @@ def evaluate(
     targets_norm_arr = np.concatenate(targets).astype(np.float32).flatten()
 
     metrics = compute_metrics(targets_arr, preds_arr)
+    finite_norm_mask = np.isfinite(targets_norm_arr) & np.isfinite(preds_norm_arr)
+    metrics["nonfinite_norm_count"] = int(len(targets_norm_arr) - finite_norm_mask.sum())
     try:
-        mse_norm = mean_squared_error(targets_norm_arr, preds_norm_arr)
-        metrics["mae_norm"] = float(mean_absolute_error(targets_norm_arr, preds_norm_arr))
+        valid_targets_norm = targets_norm_arr[finite_norm_mask]
+        valid_preds_norm = preds_norm_arr[finite_norm_mask]
+        if len(valid_targets_norm) == 0:
+            raise ValueError("No finite normalized prediction pairs.")
+        mse_norm = mean_squared_error(valid_targets_norm, valid_preds_norm)
+        metrics["mae_norm"] = float(mean_absolute_error(valid_targets_norm, valid_preds_norm))
         metrics["mse_norm"] = float(mse_norm)
         metrics["rmse_norm"] = float(np.sqrt(mse_norm))
-        metrics["r2_norm"] = _safe_r2(targets_norm_arr, preds_norm_arr)
+        metrics["r2_norm"] = _safe_r2(valid_targets_norm, valid_preds_norm)
     except Exception:
         metrics["mae_norm"] = float("nan")
         metrics["mse_norm"] = float("nan")

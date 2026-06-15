@@ -1,0 +1,38 @@
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{0}: checkout: moving from trinh_update_v9 to trinh_update_v9
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{1}: reset: moving to HEAD~1
+[33m5502de317[m[33m ([m[1;32mtrinh_update_v8[m[33m)[m HEAD@{2}: reset: moving to HEAD~1
+[33m3e7b889f2[m[33m ([m[1;31morigin/trinh_update_v9[m[33m)[m HEAD@{3}: commit: update_mamba_faster
+[33m5502de317[m[33m ([m[1;32mtrinh_update_v8[m[33m)[m HEAD@{4}: checkout: moving from trinh_update_v8 to trinh_update_v9
+[33m5502de317[m[33m ([m[1;32mtrinh_update_v8[m[33m)[m HEAD@{5}: reset: moving to HEAD~1
+[33mec9b120fe[m HEAD@{6}: reset: moving to HEAD~1
+[33m05a8d852e[m[33m ([m[1;31morigin/trinh_update_v8[m[33m)[m HEAD@{7}: commit: update_streamlit
+[33mec9b120fe[m HEAD@{8}: commit: update_lstm_trans_mamba_merge
+[33m5502de317[m[33m ([m[1;32mtrinh_update_v8[m[33m)[m HEAD@{9}: checkout: moving from scheduel-all to trinh_update_v8
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{10}: reset: moving to HEAD
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{11}: checkout: moving from trinh_update_v8 to scheduel-all
+[33m5502de317[m[33m ([m[1;32mtrinh_update_v8[m[33m)[m HEAD@{12}: checkout: moving from scheduel-all to trinh_update_v8
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{13}: reset: moving to HEAD
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{14}: checkout: moving from trinh_update_v8 to scheduel-all
+[33m5502de317[m[33m ([m[1;32mtrinh_update_v8[m[33m)[m HEAD@{15}: commit: update_lstm_transformer
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{16}: checkout: moving from scheduel-all to trinh_update_v8
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{17}: checkout: moving from trinh_update_v8 to scheduel-all
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{18}: checkout: moving from scheduel-all to trinh_update_v8
+[33mff124a4d1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mtrinh_update_v9[m[33m, [m[1;31morigin/scheduel-all[m[33m, [m[1;32mscheduel-all[m[33m)[m HEAD@{19}: checkout: moving from trinh_update_v6 to scheduel-all
+[33mf761437e0[m[33m ([m[1;31morigin/trinh_update_v6[m[33m, [m[1;32mtrinh_update_v6[m[33m)[m HEAD@{20}: commit: update_json
+[33m263e23b64[m[33m ([m[1;31morigin/trinh_update_v4[m[33m, [m[1;32mtrinh_update_v7[m[33m, [m[1;32mtrinh_update_v4[m[33m)[m HEAD@{21}: checkout: moving from trinh_update_v7 to trinh_update_v6
+[33m263e23b64[m[33m ([m[1;31morigin/trinh_update_v4[m[33m, [m[1;32mtrinh_update_v7[m[33m, [m[1;32mtrinh_update_v4[m[33m)[m HEAD@{22}: checkout: moving from trinh_update_v6 to trinh_update_v7
+[33m263e23b64[m[33m ([m[1;31morigin/trinh_update_v4[m[33m, [m[1;32mtrinh_update_v7[m[33m, [m[1;32mtrinh_update_v4[m[33m)[m HEAD@{23}: checkout: moving from trinh_update_v4 to trinh_update_v6
+[33m263e23b64[m[33m ([m[1;31morigin/trinh_update_v4[m[33m, [m[1;32mtrinh_update_v7[m[33m, [m[1;32mtrinh_update_v4[m[33m)[m HEAD@{24}: checkout: moving from trinh_update_v5 to trinh_update_v4
+[33m90503a8a8[m[33m ([m[1;31morigin/trinh_update_v5[m[33m, [m[1;32mtrinh_update_v5[m[33m)[m HEAD@{25}: commit: update_check_seasonality
+[33m263e23b64[m[33m ([m[1;31morigin/trinh_update_v4[m[33m, [m[1;32mtrinh_update_v7[m[33m, [m[1;32mtrinh_update_v4[m[33m)[m HEAD@{26}: checkout: moving from trinh_update_v4 to trinh_update_v5
+[33m263e23b64[m[33m ([m[1;31morigin/trinh_update_v4[m[33m, [m[1;32mtrinh_update_v7[m[33m, [m[1;32mtrinh_update_v4[m[33m)[m HEAD@{27}: commit: update-streamlit
+[33ma3435caef[m HEAD@{28}: commit: update air_quality.yaml
+[33m982fd51ac[m[33m ([m[1;31morigin/trinh_update_v3[m[33m, [m[1;32mtrinh_update_v3[m[33m)[m HEAD@{29}: checkout: moving from trinh_update_v3 to trinh_update_v4
+[33m982fd51ac[m[33m ([m[1;31morigin/trinh_update_v3[m[33m, [m[1;32mtrinh_update_v3[m[33m)[m HEAD@{30}: commit: update_model
+[33mbe4ad3c0f[m[33m ([m[1;31morigin/trinh_update_v2[m[33m, [m[1;32mtrinh_update_v2[m[33m)[m HEAD@{31}: checkout: moving from trinh_update_v2 to trinh_update_v3
+[33mbe4ad3c0f[m[33m ([m[1;31morigin/trinh_update_v2[m[33m, [m[1;32mtrinh_update_v2[m[33m)[m HEAD@{32}: commit: update_v2_p1
+[33m055a55599[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m HEAD@{33}: reset: moving to HEAD
+[33m055a55599[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m HEAD@{34}: reset: moving to origin/main
+[33m6d80af466[m HEAD@{35}: commit: mamba
+[33m055a55599[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m HEAD@{36}: checkout: moving from main to trinh_update_v2
+[33m055a55599[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m HEAD@{37}: clone: from https://github.com/hoanganh1401/KLTN_Mamba.git
