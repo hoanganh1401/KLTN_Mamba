@@ -1,4 +1,4 @@
-﻿"""Shared training helpers for Mamba, LSTM, and Transformer AQI models."""
+"""Shared training helpers for Mamba, LSTM, and Transformer AQI models."""
 
 from __future__ import annotations
 
@@ -324,8 +324,7 @@ def collect_predictions(
     preds, targets = [], []
     amp_enabled = use_amp and device.type == "cuda"
     for x_seq, y in loader:
-        x_seq = x_seq.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
+        x_seq, y = x_seq.to(device), y.to(device)
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=amp_enabled):
             pred = model(x_seq)
         preds.append(pred.detach().float().cpu().numpy())
@@ -417,46 +416,30 @@ def run_epoch(
     start_t      = time.time()
     amp_enabled  = use_amp and device.type == "cuda"
     scaler       = torch.amp.GradScaler("cuda", enabled=amp_enabled)
-    sync_interval = log_interval if log_interval > 0 else 0
-    slow_batch_sec = 10.0
 
     optimizer.zero_grad(set_to_none=True)
-    loader_iter = iter(loader)
-    pbar = tqdm(
-        range(1, len(loader) + 1),
-        desc=f"Train {epoch_idx}/{total_epochs}",
-        leave=False,
-        mininterval=2.0,
-        maxinterval=10.0,
-        dynamic_ncols=False,
-    )
+    pbar = tqdm(loader, desc=f"Train {epoch_idx}/{total_epochs}", leave=False, mininterval=2.0)
 
-    for step in pbar:
-        load_t = time.time()
-        x_seq, y = next(loader_iter)
-        load_sec = time.time() - load_t
-        step_t = time.time()
+    for step, (x_seq, y) in enumerate(pbar, start=1):
         x_seq = x_seq.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
-        transfer_sec = time.time() - step_t
 
-        forward_t = time.time()
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=amp_enabled):
             pred = model(x_seq)
             loss = criterion(pred, y)
             loss_for_backward = loss / grad_accum_steps
-        forward_sec = time.time() - forward_t
 
-        backward_t = time.time()
+        if not torch.isfinite(loss.detach()):
+            logger.warning("Non-finite loss tại epoch %d step %d, bỏ qua batch này.", epoch_idx, step)
+            optimizer.zero_grad(set_to_none=True)
+            continue
+
         if amp_enabled:
             scaler.scale(loss_for_backward).backward()
         else:
             loss_for_backward.backward()
-        backward_sec = time.time() - backward_t
 
-        optimizer_sec = 0.0
         if step % grad_accum_steps == 0 or step == len(loader):
-            optimizer_t = time.time()
             if amp_enabled:
                 if max_grad_norm > 0:
                     scaler.unscale_(optimizer)
@@ -468,53 +451,19 @@ def run_epoch(
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
                 optimizer.step()
             optimizer.zero_grad(set_to_none=True)
-            optimizer_sec = time.time() - optimizer_t
 
         batch_size = y.size(0)
         running_loss += loss.detach() * batch_size
         seen_samples += batch_size
 
         should_log = log_interval > 0 and (step % log_interval == 0 or step == len(loader))
-        should_update_progress = sync_interval > 0 and (step % sync_interval == 0 or step == len(loader))
-        if should_log or should_update_progress:
+        if should_log:
             loss_value = float(loss.detach().cpu())
             avg_loss = float((running_loss / max(1, seen_samples)).detach().cpu())
-            if not np.isfinite(loss_value):
-                logger.warning("Non-finite loss tại epoch %d step %d.", epoch_idx, step)
             pbar.set_postfix(loss=f"{loss_value:.5f}", avg=f"{avg_loss:.5f}")
-
-        if should_log:
             logger.info(
                 "Epoch %d/%d | step %d/%d | batch_loss=%.6f | running_avg=%.6f",
                 epoch_idx, total_epochs, step, len(loader), loss_value, avg_loss,
-            )
-
-        step_sec = time.time() - step_t
-        if step_sec >= slow_batch_sec:
-            logger.warning(
-                "Slow train batch | epoch=%d/%d step=%d/%d elapsed=%.1fs | "
-                "transfer=%.3fs forward=%.3fs backward=%.3fs optimizer=%.3fs | "
-                "cuda_mem_alloc=%.1fMB cuda_mem_reserved=%.1fMB",
-                epoch_idx,
-                total_epochs,
-                step,
-                len(loader),
-                step_sec,
-                transfer_sec,
-                forward_sec,
-                backward_sec,
-                optimizer_sec,
-                torch.cuda.memory_allocated(device) / 1024**2 if device.type == "cuda" else 0.0,
-                torch.cuda.memory_reserved(device) / 1024**2 if device.type == "cuda" else 0.0,
-            )
-        if load_sec >= slow_batch_sec:
-            logger.warning(
-                "Slow data batch | epoch=%d/%d step=%d/%d data_wait=%.1fs",
-                epoch_idx,
-                total_epochs,
-                step,
-                len(loader),
-                load_sec,
             )
 
     epoch_loss = float((running_loss / len(loader.dataset)).detach().cpu())
@@ -540,8 +489,7 @@ def evaluate(
     amp_enabled = use_amp and device.type == "cuda"
 
     for x_seq, y in loader:
-        x_seq = x_seq.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
+        x_seq, y = x_seq.to(device), y.to(device)
         with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=amp_enabled):
             pred = model(x_seq)
             loss = criterion(pred, y)
@@ -556,12 +504,18 @@ def evaluate(
     targets_norm_arr = np.concatenate(targets).astype(np.float32).flatten()
 
     metrics = compute_metrics(targets_arr, preds_arr)
+    finite_norm_mask = np.isfinite(targets_norm_arr) & np.isfinite(preds_norm_arr)
+    metrics["nonfinite_norm_count"] = int(len(targets_norm_arr) - finite_norm_mask.sum())
     try:
-        mse_norm = mean_squared_error(targets_norm_arr, preds_norm_arr)
-        metrics["mae_norm"] = float(mean_absolute_error(targets_norm_arr, preds_norm_arr))
+        valid_targets_norm = targets_norm_arr[finite_norm_mask]
+        valid_preds_norm = preds_norm_arr[finite_norm_mask]
+        if len(valid_targets_norm) == 0:
+            raise ValueError("No finite normalized prediction pairs.")
+        mse_norm = mean_squared_error(valid_targets_norm, valid_preds_norm)
+        metrics["mae_norm"] = float(mean_absolute_error(valid_targets_norm, valid_preds_norm))
         metrics["mse_norm"] = float(mse_norm)
         metrics["rmse_norm"] = float(np.sqrt(mse_norm))
-        metrics["r2_norm"] = _safe_r2(targets_norm_arr, preds_norm_arr)
+        metrics["r2_norm"] = _safe_r2(valid_targets_norm, valid_preds_norm)
     except Exception:
         metrics["mae_norm"] = float("nan")
         metrics["mse_norm"] = float("nan")
@@ -573,4 +527,3 @@ def evaluate(
 
 # ---------------------------------------------------------------------------
 # Main
-

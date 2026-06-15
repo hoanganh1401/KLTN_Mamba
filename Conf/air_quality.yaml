@@ -78,14 +78,14 @@ mamba:
   enabled: true
   epochs: 150
   batch_size: 32
-  window_size: 144
+  window_size: 128
   horizon: 12
   lr: 0.0002
   loss: huber
   seed: 42
   num_workers: 0
   d_model: 128
-  n_layers: 3
+  n_layers: 2
   d_ff: 192
   d_state: 16
   d_conv: 4

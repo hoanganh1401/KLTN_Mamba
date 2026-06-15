@@ -2,15 +2,21 @@
 Hourly Air Quality DAG.
 
 Runs the near-real-time path:
-Bronze ingestion -> hourly validation -> Silver processing -> Gold features.
+Bronze ingestion -> hourly validation -> Silver processing -> Gold features
+-> inference input -> Mamba API prediction artifacts.
 """
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.providers.http.operators.http import HttpOperator
+from airflow.utils.task_group import TaskGroup
 
 PROJECT_ROOT = "/opt/Project"
 DATASET_DIR = f"{PROJECT_ROOT}/Dataset"
@@ -24,6 +30,40 @@ SCRAPER_SCRIPT = f"{DATASET_DIR}/data_scraper.py"
 VALIDATION_SCRIPT = f"{SRC_DIR}/Silver/Data_Validation.py"
 SILVER_PROCESSING_SCRIPT = f"{SRC_DIR}/Silver/silver_processing.py"
 GOLD_FEATURE_SCRIPT = f"{SRC_DIR}/Gold/gold_feature_engineering.py"
+PREPARE_INFERENCE_SCRIPT = f"{SRC_DIR}/Gold/prepare_inference_input.py"
+
+RUN_ID = "hourly_{{ ts_nodash }}"
+
+
+def load_location_keys(path: str) -> list[str]:
+    """Read province keys at DAG-parse time to create one inference chain per province."""
+    dag_project_root = Path(__file__).resolve().parents[2]
+    candidates = [
+        Path(path),
+        dag_project_root / "DataSet" / "locations.jsonl",
+        dag_project_root / "Dataset" / "locations.jsonl",
+    ]
+    location_path = next((candidate for candidate in candidates if candidate.exists()), None)
+    if location_path is None:
+        return []
+
+    keys: list[str] = []
+    with location_path.open(encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            key = item.get("location_key")
+            if key:
+                keys.append(str(key))
+    return keys
+
+
+def task_suffix(location_key: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_]+", "_", location_key).strip("_").lower()
+
+
+LOCATION_KEYS = load_location_keys(LOCATIONS_PATH)
 
 COMMON_ENV = {
     "PYTHONPATH": f"{PROJECT_ROOT}:{SRC_DIR}",
@@ -47,13 +87,13 @@ default_args = {
 
 with DAG(
     dag_id="air_quality_hourly",
-    description="Hourly Bronze ingestion, Silver processing, and Gold feature refresh",
+    description="Hourly Bronze ingestion, Silver processing, Gold feature refresh, and Mamba inference",
     default_args=default_args,
     schedule="@hourly",
     start_date=datetime(2025, 4, 1),
     catchup=False,
     max_active_runs=1,
-    tags=["air-quality", "hourly", "bronze", "silver", "gold"],
+    tags=["air-quality", "hourly", "bronze", "silver", "gold", "mamba", "inference"],
 ) as dag:
     ingest_incremental = BashOperator(
         task_id="ingest_incremental",
@@ -123,4 +163,66 @@ with DAG(
         execution_timeout=timedelta(hours=2),
     )
 
-    ingest_incremental >> validate_hourly >> process_silver >> build_gold_features
+    if not LOCATION_KEYS:
+        raise FileNotFoundError(f"No location keys found at {LOCATIONS_PATH}")
+
+    previous_tail = build_gold_features
+    with TaskGroup(group_id="infer_each_province") as per_province:
+        for location_key in LOCATION_KEYS:
+            suffix = task_suffix(location_key)
+            inference_run_id = f"{RUN_ID}__{location_key}"
+            latest_dataset_var = f"AQI_LATEST_DATASET_RUN_ID_{suffix}"
+            latest_model_var = f"AQI_LATEST_MODEL_RUN_ID_{suffix}"
+            latest_dataset_run_id = "{{ var.value.get('" + latest_dataset_var + "', '') }}"
+            latest_model_run_id = "{{ var.value.get('" + latest_model_var + "', '') }}"
+
+            prepare_inference_input = BashOperator(
+                task_id=f"prepare_inference_input_{suffix}",
+                bash_command=(
+                    "set -euo pipefail; "
+                    f"LATEST_DATASET_RUN_ID=\"{latest_dataset_run_id}\"; "
+                    f"LATEST_MODEL_RUN_ID=\"{latest_model_run_id}\"; "
+                    "if [ -z \"${LATEST_DATASET_RUN_ID}\" ]; then "
+                    f"echo \"Missing Airflow Variable {latest_dataset_var}. Run daily training first.\"; "
+                    "exit 1; "
+                    "fi; "
+                    "if [ -z \"${LATEST_MODEL_RUN_ID}\" ]; then "
+                    f"echo \"Missing Airflow Variable {latest_model_var}. Run daily training first.\"; "
+                    "exit 1; "
+                    "fi; "
+                    f"python {PREPARE_INFERENCE_SCRIPT} "
+                    f"--locations {LOCATIONS_PATH} "
+                    f"--location-keys {location_key} "
+                    f"--config {PROJECT_CONFIG} "
+                    "--end-date {{ ds }} "
+                    "--lookback-days {{ var.value.get('AQI_INFERENCE_LOOKBACK_DAYS', '14') }} "
+                    "--run-id ${LATEST_DATASET_RUN_ID} "
+                    f"--output-run-id {inference_run_id}"
+                ),
+                env=COMMON_ENV,
+                execution_timeout=timedelta(minutes=45),
+            )
+
+            run_inference = HttpOperator(
+                task_id=f"run_inference_{suffix}",
+                http_conn_id="mamba_api",
+                endpoint="/inference",
+                method="POST",
+                data=json.dumps(
+                    {
+                        "inference_run_id": inference_run_id,
+                        "model_run_id": latest_model_run_id,
+                        "artifact_run_id": inference_run_id,
+                        "province": location_key,
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+                log_response=True,
+                extra_options={"timeout": 3600},
+                execution_timeout=timedelta(hours=1),
+            )
+
+            previous_tail >> prepare_inference_input >> run_inference
+            previous_tail = run_inference
+
+    ingest_incremental >> validate_hourly >> process_silver >> build_gold_features >> per_province

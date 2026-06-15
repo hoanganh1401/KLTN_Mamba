@@ -1,9 +1,9 @@
 """
-Daily Air Quality training and inference DAG.
+Daily Air Quality training DAG.
 
 Runs the completed-day path:
 daily validation -> Gold features -> training dataset -> Mamba API training
--> inference input -> Mamba API prediction artifacts.
+-> publish latest dataset/model ids for hourly inference.
 """
 
 from __future__ import annotations
@@ -29,7 +29,6 @@ MAMBA_CONFIG = "/workspace/KLTN_Mamba/Conf/air_quality.yaml"
 VALIDATION_SCRIPT = f"{SRC_DIR}/Silver/Data_Validation.py"
 GOLD_FEATURE_SCRIPT = f"{SRC_DIR}/Gold/gold_feature_engineering.py"
 PREPARE_TRAINING_SCRIPT = f"{SRC_DIR}/Gold/prepare_training_dataset.py"
-PREPARE_INFERENCE_SCRIPT = f"{SRC_DIR}/Gold/prepare_inference_input.py"
 
 RUN_ID = "daily_{{ ds_nodash }}"
 
@@ -86,13 +85,13 @@ default_args = {
 
 with DAG(
     dag_id="air_quality_daily_training",
-    description="Daily validation, dataset build, Mamba API training, and Mamba API inference",
+    description="Daily validation, dataset build, Mamba API training, and latest artifact publish",
     default_args=default_args,
     schedule="0 1 * * *",
     start_date=datetime(2025, 4, 1),
     catchup=False,
     max_active_runs=1,
-    tags=["air-quality", "daily", "silver", "gold", "mamba", "inference"],
+    tags=["air-quality", "daily", "silver", "gold", "mamba", "training"],
 ) as dag:
     validate_daily = BashOperator(
         task_id="validate_daily",
@@ -122,7 +121,7 @@ with DAG(
         raise FileNotFoundError(f"No location keys found at {LOCATIONS_PATH}")
 
     previous_tail = refresh_gold_features
-    with TaskGroup(group_id="train_infer_each_province") as per_province:
+    with TaskGroup(group_id="train_each_province") as per_province:
         for location_key in LOCATION_KEYS:
             suffix = task_suffix(location_key)
             province_run_id = f"{RUN_ID}__{location_key}"
@@ -162,47 +161,19 @@ with DAG(
                 execution_timeout=timedelta(hours=6),
             )
 
-            prepare_inference_input = BashOperator(
-                task_id=f"prepare_inference_input_{suffix}",
+            publish_latest_ids = BashOperator(
+                task_id=f"publish_latest_ids_{suffix}",
                 bash_command=(
-                    f"python {PREPARE_INFERENCE_SCRIPT} "
-                    f"--locations {LOCATIONS_PATH} "
-                    f"--location-keys {location_key} "
-                    f"--config {PROJECT_CONFIG} "
-                    "--end-date {{ ds }} "
-                    "--lookback-days {{ var.value.get('AQI_INFERENCE_LOOKBACK_DAYS', '14') }} "
-                    f"--run-id {province_run_id} "
-                    f"--output-run-id {province_run_id}"
+                    "set -euo pipefail; "
+                    f"airflow variables set AQI_LATEST_DATASET_RUN_ID_{suffix} {province_run_id}; "
+                    f"airflow variables set AQI_LATEST_MODEL_RUN_ID_{suffix} {model_run_id}"
                 ),
                 env=COMMON_ENV,
-                execution_timeout=timedelta(minutes=45),
-            )
-
-            run_inference = HttpOperator(
-                task_id=f"run_inference_{suffix}",
-                http_conn_id="mamba_api",
-                endpoint="/inference",
-                method="POST",
-                data=json.dumps(
-                    {
-                        "inference_run_id": province_run_id,
-                        "model_run_id": model_run_id,
-                        "artifact_run_id": province_run_id,
-                    }
-                ),
-                headers={"Content-Type": "application/json"},
-                log_response=True,
-                extra_options={"timeout": 3600},
-                execution_timeout=timedelta(hours=1),
+                execution_timeout=timedelta(minutes=5),
             )
 
             previous_tail >> prepare_training_dataset
-            (
-                prepare_training_dataset
-                >> train_mamba
-                >> prepare_inference_input
-                >> run_inference
-            )
-            previous_tail = run_inference
+            prepare_training_dataset >> train_mamba >> publish_latest_ids
+            previous_tail = publish_latest_ids
 
     validate_daily >> refresh_gold_features >> per_province

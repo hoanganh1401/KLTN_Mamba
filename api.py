@@ -29,6 +29,7 @@ class InferenceRequest(BaseModel):
     inference_run_id: str = Field(..., description="Inference input run id")
     model_run_id: str = Field(..., description="Model run id created by /train")
     artifact_run_id: str | None = Field(None, description="Prediction artifact run id")
+    province: str | None = Field(None, description="Province key for loading model artifacts from MinIO")
 
 
 def _run_command(cmd: list[str], timeout: int | None = None) -> dict[str, Any]:
@@ -99,11 +100,25 @@ def run_inference(req: InferenceRequest) -> dict[str, Any]:
     checkpoint = model_dir / "best_mamba_aqi.pt"
     metadata = model_dir / "training_metadata.json"
 
-    if not checkpoint.exists() or not metadata.exists():
+    if checkpoint.exists() and metadata.exists():
+        model_args = [
+            "--checkpoint",
+            str(checkpoint),
+            "--metadata",
+            str(metadata),
+        ]
+    elif req.province:
+        model_args = [
+            "--province",
+            req.province,
+            "--model-run-id",
+            req.model_run_id,
+        ]
+    else:
         raise HTTPException(
             status_code=404,
             detail={
-                "message": "Local checkpoint or metadata not found. Run /train first or keep local artifacts.",
+                "message": "Local checkpoint or metadata not found. Run /train first, keep local artifacts, or provide province for MinIO fallback.",
                 "checkpoint": str(checkpoint),
                 "metadata": str(metadata),
             },
@@ -114,10 +129,7 @@ def run_inference(req: InferenceRequest) -> dict[str, Any]:
         str(INFERENCE_SCRIPT),
         "--inference-run-id",
         req.inference_run_id,
-        "--checkpoint",
-        str(checkpoint),
-        "--metadata",
-        str(metadata),
+        *model_args,
         "--artifact-run-id",
         artifact_run_id,
     ]
@@ -127,6 +139,7 @@ def run_inference(req: InferenceRequest) -> dict[str, Any]:
             "inference_run_id": req.inference_run_id,
             "model_run_id": req.model_run_id,
             "artifact_run_id": artifact_run_id,
+            "province": req.province,
         }
     )
     return result
