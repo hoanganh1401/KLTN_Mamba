@@ -1,7 +1,5 @@
 # Docker ignore file for streaming service
-docker-compose.yaml
-Dockerfile
-Dockerfile.mamba
+
 
 
 

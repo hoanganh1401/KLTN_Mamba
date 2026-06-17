@@ -18,3 +18,8 @@ runs/
 # OS
 Thumbs.db
 .DS_Store
+
+
+docker-compose.yaml
+Dockerfile
+Dockerfile.mamba
