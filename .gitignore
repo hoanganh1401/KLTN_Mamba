@@ -19,7 +19,6 @@ runs/
 Thumbs.db
 .DS_Store
 
-
-docker-compose.yaml
-Dockerfile
-Dockerfile.mamba
+Tool/docker-compose.yaml
+Tool/Dockerfile
+Tool/Dockerfile.mamba
