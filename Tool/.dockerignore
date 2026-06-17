@@ -1,4 +1,9 @@
 # Docker ignore file for streaming service
+docker-compose.yaml
+Dockerfile
+Dockerfile.mamba
+
+
 
 # Logs and cache
 logs/
