@@ -14,7 +14,7 @@ openpyxl
 # Machine Learning
 scikit-learn
 tqdm
-einops
+einops==0.7.0
 setuptools>=61.0.0
 transformers==4.44.2
 

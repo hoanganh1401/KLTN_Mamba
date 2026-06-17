@@ -27,8 +27,6 @@ for _path in (str(_REPO_ROOT), str(_SRC_ROOT)):
 
 from src.core.data_structs import AQIDataset
 from src.core.utils import resolve_device, set_seed, setup_logger
-from src.Model.LSTM.lstm_model import TimeSeriesLSTMRegressor
-from src.Model.Mamba.mamba_model import TimeSeriesMambaRegressor
 from src.Model.Common.mlflow_utils import log_artifact_dir, start_mlflow_run
 from src.Model.Common.train_common_aqi import (
     _mamba_cuda_path_ready,
@@ -44,7 +42,6 @@ from src.Model.Common.train_common_aqi import (
     _cfg_bool,
     _resolve_single_province,
 )
-from src.Model.Transformer.transformer_model import TimeSeriesTransformerRegressor
 from src.common.config import MINIO_GOLD_BUCKET, load_project_config
 from src.common.minio_io import get_client, load_pickle
 from src.common.time_utils import now_local
@@ -52,6 +49,8 @@ from src.common.time_utils import now_local
 
 def build_model(args, num_features: int):
     if args.model_type == "mamba":
+        from src.Model.Mamba.mamba_model import TimeSeriesMambaRegressor
+
         return TimeSeriesMambaRegressor(
             num_features=num_features,
             d_model=args.d_model,
@@ -63,6 +62,8 @@ def build_model(args, num_features: int):
             expand=args.expand,
         )
     if args.model_type == "lstm":
+        from src.Model.LSTM.lstm_model import TimeSeriesLSTMRegressor
+
         return TimeSeriesLSTMRegressor(
             num_features=num_features,
             hidden_size=args.hidden_size,
@@ -71,6 +72,8 @@ def build_model(args, num_features: int):
             dropout=args.dropout,
         )
     if args.model_type == "transformer":
+        from src.Model.Transformer.transformer_model import TimeSeriesTransformerRegressor
+
         return TimeSeriesTransformerRegressor(
             num_features=num_features,
             d_model=args.d_model,

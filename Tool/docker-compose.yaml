@@ -157,7 +157,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 180s
+      start_period: 30s
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
@@ -211,14 +211,12 @@ services:
     restart: "no"
 
   mlflow:
-    image: kltn-ts-mamba:latest
+    image: tool-ts-mamba:latest
     container_name: mlflow
     command:
       - bash
       - -lc
       - >
-        python3 -c "import psycopg2, boto3" ||
-        python3 -m pip install --no-cache-dir psycopg2-binary boto3 &&
         exec mlflow server
         --host 0.0.0.0
         --port 5000
@@ -500,7 +498,7 @@ services:
         max-file: "3"
 
   ts-mamba:
-    image: kltn-ts-mamba:latest
+    image: tool-ts-mamba:latest
     build:
       context: ..
       dockerfile: Tool/Dockerfile.mamba

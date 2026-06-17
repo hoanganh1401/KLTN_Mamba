@@ -14,7 +14,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from airflow import DAG
+from airflow.models import Variable
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import PythonOperator
 from airflow.providers.http.operators.http import HttpOperator
 from airflow.utils.task_group import TaskGroup
 
@@ -59,6 +61,16 @@ def load_location_keys(path: str) -> list[str]:
 
 def task_suffix(location_key: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]+", "_", location_key).strip("_").lower()
+
+
+def publish_latest_ids_to_variables(
+    dataset_var: str,
+    dataset_run_id: str,
+    model_var: str,
+    model_run_id: str,
+) -> None:
+    Variable.set(dataset_var, dataset_run_id)
+    Variable.set(model_var, model_run_id)
 
 
 LOCATION_KEYS = load_location_keys(LOCATIONS_PATH)
@@ -161,14 +173,15 @@ with DAG(
                 execution_timeout=timedelta(hours=6),
             )
 
-            publish_latest_ids = BashOperator(
+            publish_latest_ids = PythonOperator(
                 task_id=f"publish_latest_ids_{suffix}",
-                bash_command=(
-                    "set -euo pipefail; "
-                    f"airflow variables set AQI_LATEST_DATASET_RUN_ID_{suffix} {province_run_id}; "
-                    f"airflow variables set AQI_LATEST_MODEL_RUN_ID_{suffix} {model_run_id}"
-                ),
-                env=COMMON_ENV,
+                python_callable=publish_latest_ids_to_variables,
+                op_kwargs={
+                    "dataset_var": f"AQI_LATEST_DATASET_RUN_ID_{suffix}",
+                    "dataset_run_id": province_run_id,
+                    "model_var": f"AQI_LATEST_MODEL_RUN_ID_{suffix}",
+                    "model_run_id": model_run_id,
+                },
                 execution_timeout=timedelta(minutes=5),
             )
 

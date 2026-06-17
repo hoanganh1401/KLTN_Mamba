@@ -1,11 +1,7 @@
-"""Model definitions and training entrypoints."""
+"""Model definitions and training entrypoints.
 
-from .Mamba.mamba_model import TimeSeriesMambaRegressor
-from .LSTM.lstm_model import TimeSeriesLSTMRegressor
-from .Transformer.transformer_model import TimeSeriesTransformerRegressor
+Keep this package init lightweight. Training scripts import specific model
+modules lazily to avoid loading unrelated frameworks under tight memory limits.
+"""
 
-__all__ = [
-    "TimeSeriesMambaRegressor",
-    "TimeSeriesLSTMRegressor",
-    "TimeSeriesTransformerRegressor",
-]
+__all__: list[str] = []
