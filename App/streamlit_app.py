@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 from pathlib import Path
 from textwrap import dedent
@@ -24,10 +25,11 @@ for _path in (str(_REPO_ROOT), str(_SRC_ROOT)):
         sys.path.insert(0, _path)
 
 from src.common.config import MINIO_ARTIFACTS_BUCKET, MINIO_HOST
-from src.common.minio_io import get_client, load_bytes, load_json_object
-from src.common.time_utils import parse_time_local
+from src.common.minio_io import get_client, load_bytes, load_csv_object, load_json_object
+from src.common.time_utils import now_local, parse_time_local
 
 PREDICTION_ROOT = "mamba_inference"
+MINIO_RAW_BUCKETS = list(dict.fromkeys([os.environ.get("MINIO_BUCKET", "air-quality"), "air-quality"]))
 
 AQI_LEVELS = [
     {"max": 50, "label": "Good", "vi": "Tốt", "color": "#22c55e", "text": "#052e16"},
@@ -418,6 +420,105 @@ def load_latest_predictions(rows: list[dict[str, str]], provinces: list[str]) ->
     return pd.concat(frames, ignore_index=True)
 
 
+def raw_air_quality_path(location_key: str, value: pd.Timestamp) -> str:
+    return (
+        f"air_quality/province={location_key}"
+        f"/year={value.year}/month={value.month:02d}/day={value.day:02d}/data.csv"
+    )
+
+
+@st.cache_data(ttl=60)
+def load_current_raw_aqi(provinces: tuple[str, ...], target_hour: str) -> pd.DataFrame:
+    client = get_client()
+    target_time = pd.Timestamp(target_hour)
+    frames = []
+    dates_to_try = [target_time, target_time - pd.Timedelta(days=1)]
+
+    for province in provinces:
+        chosen = None
+        for date_value in dates_to_try:
+            path = raw_air_quality_path(province, date_value)
+            for bucket in MINIO_RAW_BUCKETS:
+                df = load_csv_object(client, bucket, path)
+                if df is None or df.empty or "time" not in df.columns or "aqi" not in df.columns:
+                    continue
+                work = df.copy()
+                work["aqi"] = pd.to_numeric(work["aqi"], errors="coerce")
+                work = work.dropna(subset=["time", "aqi"])
+                work = work[work["time"] <= target_time]
+                if work.empty:
+                    continue
+                chosen = work.sort_values("time").iloc[-1]
+                break
+            if chosen is not None:
+                break
+        if chosen is None:
+            continue
+        frames.append(
+            {
+                "province": province,
+                "observed_time": chosen["time"],
+                "current_aqi": float(chosen["aqi"]),
+            }
+        )
+
+    if not frames:
+        return pd.DataFrame(columns=["province", "observed_time", "current_aqi"])
+    return pd.DataFrame(frames)
+
+
+def render_current_aqi(provinces: list[str], location_names: dict[str, str], selected_province: str) -> pd.DataFrame:
+    target_time = pd.Timestamp(now_local()).floor("h")
+    current = load_current_raw_aqi(tuple(provinces), target_time.isoformat())
+    if current.empty:
+        st.warning("Chưa có dữ liệu AQI đã cào cho giờ hiện tại.")
+        return pd.DataFrame()
+
+    current = current.copy()
+    current["province_name"] = current["province"].map(lambda p: location_names.get(str(p), str(p)))
+    current["current_level"] = current["current_aqi"].map(lambda v: str(aqi_info(v)["vi"]))
+    current["current_color"] = current["current_aqi"].map(lambda v: str(aqi_info(v)["color"]))
+    current = current.sort_values(["current_aqi", "province_name"], ascending=[False, True])
+
+    selected_rows = current[current["province"] == selected_province]
+    current_row = selected_rows.iloc[0] if not selected_rows.empty else current.iloc[0]
+    current_time = current_row["observed_time"]
+    avg_current = float(current["current_aqi"].mean())
+    alert_count = int((current["current_aqi"] > 100).sum())
+
+    c1, c2, c3, c4 = st.columns([1.15, 1, 1, 1])
+    with c1:
+        render_status_card("AQI giờ hiện tại", current_row["current_aqi"], current_time, str(current_row["province_name"]))
+    with c2:
+        render_card("Thời điểm", format_time(current_time, "%d/%m/%Y %H:%M"), "Dữ liệu đã cào gần nhất")
+    with c3:
+        render_card("AQI trung bình", f"{avg_current:.0f}", str(aqi_info(avg_current)["vi"]))
+    with c4:
+        render_card("Vượt ngưỡng 100", f"{alert_count}", "Tỉnh/thành cần lưu ý")
+
+    left_col, right_col = st.columns([1.35, 1])
+    with left_col:
+        render_html("<div class='section-title'>AQI hiện tại theo tỉnh/thành</div>")
+        display = current[["province_name", "province", "observed_time", "current_aqi", "current_level"]].copy()
+        display["observed_time"] = display["observed_time"].dt.strftime("%d/%m/%Y %H:%M")
+        st.dataframe(
+            display,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "province_name": "Tỉnh/thành",
+                "province": "Mã",
+                "observed_time": "Thời điểm",
+                "current_aqi": st.column_config.NumberColumn("AQI hiện tại", format="%.0f"),
+                "current_level": "Mức AQI",
+            },
+        )
+    with right_col:
+        render_html("<div class='section-title'>Khu vực cần lưu ý</div>")
+        render_risk_list(current, "current_aqi", "observed_time", limit=8)
+
+    return current
+
 def render_overview(all_df: pd.DataFrame, location_names: dict[str, str]) -> pd.DataFrame:
     clean = prepare_clean_predictions(all_df, location_names)
     if clean.empty:
@@ -533,7 +634,9 @@ def main() -> None:
         date_rows.sort(key=lambda r: r["run_id"], reverse=True)
         selected_run_row = date_rows[0]
 
-    overview_tab, detail_tab = st.tabs(["Tổng quan", "Chi tiết tỉnh/thành"])
+    current_tab, overview_tab, detail_tab = st.tabs(["AQI hiện tại", "Tổng Quan Dự Đoán", "Chi tiết tỉnh/thành"])
+    with current_tab:
+        render_current_aqi(provinces, location_names, selected_province)
     with overview_tab:
         render_overview(all_latest_df, location_names)
     with detail_tab:
