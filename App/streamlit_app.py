@@ -30,6 +30,11 @@ from src.common.time_utils import now_local, parse_time_local
 
 PREDICTION_ROOT = "mamba_inference"
 MINIO_RAW_BUCKETS = list(dict.fromkeys([os.environ.get("MINIO_BUCKET", "air-quality"), "air-quality"]))
+PAGE_OPTIONS = ["AQI hiện tại", "Tổng Quan Dự Đoán", "Chi tiết tỉnh/thành", "AQI quá khứ"]
+
+
+def open_past_aqi_tab() -> None:
+    st.session_state["active_tab"] = "AQI quá khứ"
 
 AQI_LEVELS = [
     {"max": 50, "label": "Good", "vi": "Tốt", "color": "#22c55e", "text": "#052e16"},
@@ -114,6 +119,17 @@ def inject_css() -> None:
         .legend { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 8px; margin: 8px 0 14px; }
         .legend-item { border-radius: 8px; padding: 9px; font-size: .78rem; font-weight: 740; min-height: 58px; }
         div[data-testid="stMetric"] { background: #ffffff; border: 1px solid var(--aqi-line); border-radius: 8px; padding: 12px 14px; }
+        [data-testid="stDataFrame"] [role="columnheader"],
+        [data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] [role="columnheader"] {
+            background: #334155 !important;
+            color: #f8fafc !important;
+            font-weight: 800 !important;
+            border-bottom: 2px solid #60a5fa !important;
+        }
+        [data-testid="stDataFrame"] [role="columnheader"] * {
+            color: #f8fafc !important;
+            font-weight: 800 !important;
+        }
         .stTabs [data-baseweb="tab-list"] { gap: 6px; }
         .stTabs [data-baseweb="tab"] { border-radius: 8px; padding: 8px 12px; background: #ffffff; border: 1px solid var(--aqi-line); color: #334155 !important; }
         .stTabs [data-baseweb="tab"] * { color: #334155 !important; opacity: 1 !important; }
@@ -125,7 +141,15 @@ def inject_css() -> None:
         [data-testid="stSidebar"] label, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: #334155 !important; }
         [data-baseweb="select"] > div { background: #ffffff !important; border-color: #cbd5e1 !important; }
         [data-baseweb="select"] span { color: #0f172a !important; }
-        .stButton button { background: #2563eb !important; color: #ffffff !important; border: 0 !important; }
+        [data-testid="stRadio"] [role="radiogroup"] { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 18px; }
+        [data-testid="stRadio"] label { background: #ffffff; border: 1px solid var(--aqi-line); border-radius: 8px; padding: 0; min-height: 48px; }
+        [data-testid="stRadio"] label > div:first-child { display: none; }
+        [data-testid="stRadio"] label > div:last-child { padding: 12px 16px; }
+        [data-testid="stRadio"] label p { color: #334155 !important; font-weight: 650; font-size: .98rem; margin: 0; }
+        [data-testid="stRadio"] label:has(input:checked) { background: #dbeafe; border-color: #2563eb; box-shadow: inset 0 -2px 0 #ef4444; }
+        [data-testid="stRadio"] label:has(input:checked) p { color: #0f172a !important; font-weight: 800; }
+        .stButton button { background: #2563eb !important; color: #ffffff !important; border: 0 !important; font-weight: 800 !important; }
+        .stButton button * { color: #ffffff !important; font-weight: 800 !important; }
         .status-card .card-help { color: inherit; opacity: .78; }
         @media (max-width: 900px) { .hero-title { font-size: 1.55rem; } .legend { grid-template-columns: repeat(2,minmax(0,1fr)); } .status-aqi { font-size: 2.6rem; } }
         </style>
@@ -189,8 +213,10 @@ def load_prediction_metadata(path: str) -> dict:
     return load_json_object(get_client(), MINIO_ARTIFACTS_BUCKET, meta_path) or {}
 
 
-def latest_path_for_province(rows: list[dict[str, str]], province: str) -> str | None:
+def latest_path_for_province(rows: list[dict[str, str]], province: str, forecast_date: str | None = None) -> str | None:
     candidates = [r for r in rows if r["province"] == province]
+    if forecast_date:
+        candidates = [r for r in candidates if r["forecast_date"] == forecast_date]
     if not candidates:
         return None
     candidates.sort(key=lambda r: (r["forecast_date"], r["run_id"]))
@@ -257,8 +283,7 @@ def render_hero(summary: pd.DataFrame) -> None:
         subtitle = "Theo dõi dự báo chỉ số chất lượng không khí theo tỉnh/thành, nhận diện điểm nóng và thời điểm AQI tăng cao."
     render_html(f"""
         <div class="hero">
-            <div class="eyebrow">Air quality forecast</div>
-            <div class="hero-title">Dự báo AQI Việt Nam</div>
+            <div class="hero-title">Dự báo chất lượng không khí (AQI) Việt Nam</div>
             <div class="hero-subtitle">{subtitle}</div>
             {meta}
         </div>
@@ -296,10 +321,11 @@ def render_card(label: str, value: str, help_text: str) -> None:
         """)
 
 
-def render_status_card(title: str, aqi_value: float, timestamp: pd.Timestamp | None, province: str = "") -> None:
+def render_status_card(title: str, aqi_value: float, timestamp: pd.Timestamp | None, province: str = "", time_text: str | None = None) -> None:
     info = aqi_info(aqi_value)
     advice = AQI_ADVICE.get(str(info["label"]), "Theo dõi thêm khi có bản tin mới.")
     place = f"<div class='card-help'>{province}</div>" if province else ""
+    displayed_time = time_text or format_time(timestamp, "%d/%m/%Y %H:%M")
     render_html(f"""
         <div class="status-card" style="background:{info['color']}; color:{info['text']}">
             <div style="font-weight:760; opacity:.86">{title}</div>
@@ -307,7 +333,7 @@ def render_status_card(title: str, aqi_value: float, timestamp: pd.Timestamp | N
             <div class="status-aqi">{format_aqi(aqi_value)}</div>
             <div class="status-label">{info['vi']}</div>
             <div style="margin-top:14px; font-size:.94rem; line-height:1.45">{advice}</div>
-            <div style="margin-top:10px; font-size:.82rem; opacity:.72">{format_time(timestamp, "%d/%m/%Y %H:%M")}</div>
+            <div style="margin-top:10px; font-size:.82rem; opacity:.72">{displayed_time}</div>
         </div>
         """)
 
@@ -335,9 +361,9 @@ def style_chart(fig: go.Figure, title: str, y_max: float) -> go.Figure:
     axis_color = "#1e293b"
     grid_color = "#cbd5e1"
     fig.update_layout(
-        title=None,
+        title_text="",
         height=430,
-        margin=dict(l=14, r=18, t=58, b=20),
+        margin=dict(l=14, r=18, t=38, b=20),
         paper_bgcolor="#ffffff",
         plot_bgcolor="#ffffff",
         font=dict(color=axis_color, size=13),
@@ -353,7 +379,7 @@ def style_chart(fig: go.Figure, title: str, y_max: float) -> go.Figure:
         ),
         xaxis=dict(
             showgrid=False,
-            title=None,
+            title_text="",
             tickfont=dict(color=axis_color, size=12),
             linecolor=axis_color,
             linewidth=1,
@@ -400,10 +426,30 @@ def render_province_chart(clean: pd.DataFrame, title: str) -> None:
     st.plotly_chart(style_chart(fig, "", y_max), width="stretch")
 
 
-def load_latest_predictions(rows: list[dict[str, str]], provinces: list[str]) -> pd.DataFrame:
+def render_province_history_chart(history: pd.DataFrame, title: str) -> None:
+    if go is None:
+        st.line_chart(history.set_index("time")[["aqi"]], width="stretch")
+        return
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=history["time"],
+            y=history["aqi"],
+            mode="lines+markers",
+            line=dict(width=4, color="#0f766e"),
+            marker=dict(size=8, color=history["level_color"], line=dict(width=1, color="#ffffff")),
+            name="AQI đã cào",
+            hovertemplate="%{x|%d/%m %H:%M}<br>%{y:.0f} AQI<extra></extra>",
+        )
+    )
+    y_max = max(220, float(history["aqi"].max()) * 1.18)
+    render_html(f"<div class='section-title'>{title}</div>")
+    st.plotly_chart(style_chart(fig, "", y_max), width="stretch")
+def load_latest_predictions(rows: list[dict[str, str]], provinces: list[str], forecast_date: str | None = None) -> pd.DataFrame:
     frames = []
     for province in provinces:
-        path = latest_path_for_province(rows, province)
+        path = latest_path_for_province(rows, province, forecast_date)
         if not path:
             continue
         df = load_prediction_csv(path)
@@ -467,6 +513,81 @@ def load_current_raw_aqi(provinces: tuple[str, ...], target_hour: str) -> pd.Dat
     return pd.DataFrame(frames)
 
 
+def recent_hour_options(hours: int = 24) -> list[pd.Timestamp]:
+    end_hour = pd.Timestamp(now_local()).floor("h") - pd.Timedelta(hours=1)
+    return [end_hour - pd.Timedelta(hours=i) for i in range(hours)]
+
+
+@st.cache_data(ttl=60)
+def load_raw_aqi_history(province: str, end_hour: str, hours: int = 24) -> pd.DataFrame:
+    client = get_client()
+    end_time = pd.Timestamp(end_hour)
+    start_time = end_time - pd.Timedelta(hours=hours - 1)
+    date_values = pd.date_range(start_time.normalize(), end_time.normalize(), freq="D")
+    frames = []
+
+    for date_value in date_values:
+        path = raw_air_quality_path(province, pd.Timestamp(date_value))
+        for bucket in MINIO_RAW_BUCKETS:
+            df = load_csv_object(client, bucket, path)
+            if df is None or df.empty or "time" not in df.columns or "aqi" not in df.columns:
+                continue
+            frames.append(df)
+            break
+
+    if not frames:
+        return pd.DataFrame(columns=["time", "aqi"])
+
+    history = pd.concat(frames, ignore_index=True)
+    history["aqi"] = pd.to_numeric(history["aqi"], errors="coerce")
+    history = history.dropna(subset=["time", "aqi"])
+    history = history[(history["time"] >= start_time) & (history["time"] <= end_time)]
+    if history.empty:
+        return pd.DataFrame(columns=["time", "aqi"])
+    history = history.drop_duplicates(subset=["time"], keep="last").sort_values("time")
+    history["level"] = history["aqi"].map(lambda v: str(aqi_info(v)["vi"]))
+    history["level_color"] = history["aqi"].map(lambda v: str(aqi_info(v)["color"]))
+    return history
+
+
+def render_past_aqi(selected_province: str, location_names: dict[str, str], selected_hour: pd.Timestamp) -> None:
+    history = load_raw_aqi_history(selected_province, selected_hour.isoformat())
+    province_name = location_names.get(selected_province, selected_province)
+    if history.empty:
+        st.warning("Không tìm thấy dữ liệu AQI quá khứ cho tỉnh/thành và mốc giờ đã chọn.")
+        return
+
+    selected_rows = history[history["time"] == selected_hour]
+    selected_row = selected_rows.iloc[0] if not selected_rows.empty else history.iloc[-1]
+    selected_time = selected_row["time"]
+    avg_aqi = float(history["aqi"].mean())
+    peak_row = history.loc[history["aqi"].idxmax()]
+    alert_hours = int((history["aqi"] > 100).sum())
+
+    c1, c2, c3, c4 = st.columns([1.15, 1, 1, 1])
+    with c1:
+        render_status_card("AQI đã ghi nhận", selected_row["aqi"], selected_time, province_name)
+    with c2:
+        render_card("AQI trung bình 24h", f"{avg_aqi:.0f}", str(aqi_info(avg_aqi)["vi"]))
+    with c3:
+        render_status_card("Đỉnh AQI 24h", peak_row["aqi"], peak_row["time"], province_name)
+    with c4:
+        render_card("Số giờ vượt 100", f"{alert_hours}", "Trong 24 giờ đã chọn")
+
+    render_province_history_chart(history, f"AQI quá khứ - {province_name}")
+    display = history.sort_values("time", ascending=False)[["time", "aqi", "level"]].copy()
+    display["time"] = display["time"].dt.strftime("%d/%m/%Y %H:%M")
+    render_html("<div class='section-title'>AQI theo từng giờ</div>")
+    st.dataframe(
+        display,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "time": "Thời gian",
+            "aqi": st.column_config.NumberColumn("AQI", format="%.0f"),
+            "level": "Mức AQI",
+        },
+    )
 def render_current_aqi(provinces: list[str], location_names: dict[str, str], selected_province: str) -> pd.DataFrame:
     target_time = pd.Timestamp(now_local()).floor("h")
     current = load_current_raw_aqi(tuple(provinces), target_time.isoformat())
@@ -488,9 +609,9 @@ def render_current_aqi(provinces: list[str], location_names: dict[str, str], sel
 
     c1, c2, c3, c4 = st.columns([1.15, 1, 1, 1])
     with c1:
-        render_status_card("AQI giờ hiện tại", current_row["current_aqi"], current_time, str(current_row["province_name"]))
+        render_status_card("AQI giờ hiện tại", current_row["current_aqi"], current_time, str(current_row["province_name"]), f"Cập nhật gần nhất vào lúc {format_time(current_time, '%H:%M')}")
     with c2:
-        render_card("Thời điểm", format_time(current_time, "%d/%m/%Y %H:%M"), "Dữ liệu đã cào gần nhất")
+        render_card("Thời điểm", format_time(current_time, "%d/%m/%Y %H:%M"), "")
     with c3:
         render_card("AQI trung bình", f"{avg_current:.0f}", str(aqi_info(avg_current)["vi"]))
     with c4:
@@ -499,7 +620,7 @@ def render_current_aqi(provinces: list[str], location_names: dict[str, str], sel
     left_col, right_col = st.columns([1.35, 1])
     with left_col:
         render_html("<div class='section-title'>AQI hiện tại theo tỉnh/thành</div>")
-        display = current[["province_name", "province", "observed_time", "current_aqi", "current_level"]].copy()
+        display = current[["province_name", "observed_time", "current_aqi", "current_level"]].copy()
         display["observed_time"] = display["observed_time"].dt.strftime("%d/%m/%Y %H:%M")
         st.dataframe(
             display,
@@ -507,7 +628,6 @@ def render_current_aqi(provinces: list[str], location_names: dict[str, str], sel
             hide_index=True,
             column_config={
                 "province_name": "Tỉnh/thành",
-                "province": "Mã",
                 "observed_time": "Thời điểm",
                 "current_aqi": st.column_config.NumberColumn("AQI hiện tại", format="%.0f"),
                 "current_level": "Mức AQI",
@@ -553,12 +673,11 @@ def render_overview(all_df: pd.DataFrame, location_names: dict[str, str]) -> pd.
     display["next_forecast_time"] = display["next_forecast_time"].dt.strftime("%d/%m/%Y %H:%M")
     display["peak_time"] = display["peak_time"].dt.strftime("%d/%m/%Y %H:%M")
     st.dataframe(
-        display.drop(columns=["next_color", "source_path", "run_id"]),
+        display.drop(columns=["next_color", "source_path", "run_id", "province"]),
         width="stretch",
         hide_index=True,
         column_config={
             "province_name": "Tỉnh/thành",
-            "province": "Mã",
             "forecast_date_partition": "Ngày dự báo",
             "next_forecast_time": "Mốc gần nhất",
             "next_aqi": st.column_config.NumberColumn("AQI gần nhất", format="%.0f"),
@@ -610,12 +729,12 @@ def main() -> None:
     rows = [parse_prediction_path(path) for path in paths]
     location_names = load_location_names()
     provinces = sorted({r["province"] for r in rows if r["province"]})
-    all_latest_df = load_latest_predictions(rows, provinces) if provinces else pd.DataFrame()
+    current_forecast_date = pd.Timestamp(now_local()).date().isoformat()
+    all_latest_df = load_latest_predictions(rows, provinces, current_forecast_date) if provinces else pd.DataFrame()
     summary = build_summary(all_latest_df, location_names) if not all_latest_df.empty else pd.DataFrame()
     render_hero(summary)
 
     with st.sidebar:
-        st.markdown("### Bộ lọc dự báo")
         if st.button("Làm mới dữ liệu", width="stretch"):
             st.cache_data.clear()
             st.rerun()
@@ -625,25 +744,40 @@ def main() -> None:
         st.info("Chưa có dữ liệu dự báo để hiển thị. Vui lòng chạy pipeline dự báo trước.")
         return
 
+    if "active_tab" not in st.session_state:
+        st.session_state["active_tab"] = PAGE_OPTIONS[0]
+
     with st.sidebar:
         selected_province = st.selectbox("Tỉnh/thành", provinces, format_func=lambda p: f"{location_names.get(p, p)}")
+        history_hours = recent_hour_options(24)
+        selected_history_hour = st.selectbox(
+            "AQI trong 24h qua",
+            history_hours,
+            format_func=lambda value: format_time(value, "%d/%m/%Y %H:%M"),
+            key="selected_history_hour",
+            on_change=open_past_aqi_tab,
+        )
+        selected_date = current_forecast_date
         province_rows = [r for r in rows if r["province"] == selected_province]
-        forecast_dates = sorted({r["forecast_date"] for r in province_rows if r["forecast_date"]}, reverse=True)
-        selected_date = st.selectbox("Ngày dự báo", forecast_dates)
         date_rows = [r for r in province_rows if r["forecast_date"] == selected_date]
         date_rows.sort(key=lambda r: r["run_id"], reverse=True)
-        selected_run_row = date_rows[0]
+        selected_run_row = date_rows[0] if date_rows else None
 
-    current_tab, overview_tab, detail_tab = st.tabs(["AQI hiện tại", "Tổng Quan Dự Đoán", "Chi tiết tỉnh/thành"])
-    with current_tab:
+    active_tab = st.radio("Điều hướng", PAGE_OPTIONS, horizontal=True, key="active_tab", label_visibility="collapsed")
+    if active_tab == "AQI hiện tại":
         render_current_aqi(provinces, location_names, selected_province)
-    with overview_tab:
+    elif active_tab == "Tổng Quan Dự Đoán":
         render_overview(all_latest_df, location_names)
-    with detail_tab:
-        selected_path = selected_run_row["path"]
-        selected_df = load_prediction_csv(selected_path)
-        selected_meta = load_prediction_metadata(selected_path)
-        render_prediction(selected_df, selected_meta, selected_path, location_names)
+    elif active_tab == "Chi tiết tỉnh/thành":
+        if selected_run_row is None:
+            st.warning(f"Chưa có dữ liệu dự báo cho ngày hiện tại ({selected_date}) của {location_names.get(selected_province, selected_province)}.")
+        else:
+            selected_path = selected_run_row["path"]
+            selected_df = load_prediction_csv(selected_path)
+            selected_meta = load_prediction_metadata(selected_path)
+            render_prediction(selected_df, selected_meta, selected_path, location_names)
+    else:
+        render_past_aqi(selected_province, location_names, selected_history_hour)
 
 
 if __name__ == "__main__":
