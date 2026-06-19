@@ -11,7 +11,11 @@ from pydantic import BaseModel, Field
 
 PROJECT_ROOT = Path("/workspace/KLTN_Mamba")
 CONFIG_PATH = PROJECT_ROOT / "Conf" / "air_quality.yaml"
-TRAIN_SCRIPT = PROJECT_ROOT / "src" / "Model" / "Mamba" / "train_mamba_aqi.py"
+TRAIN_SCRIPTS = {
+    "mamba": PROJECT_ROOT / "src" / "Model" / "Mamba" / "train_mamba_aqi.py",
+    "lstm": PROJECT_ROOT / "src" / "Model" / "LSTM" / "train_lstm_aqi.py",
+    "transformer": PROJECT_ROOT / "src" / "Model" / "Transformer" / "train_transformer_aqi.py",
+}
 INFERENCE_SCRIPT = PROJECT_ROOT / "src" / "Inference" / "run_mamba_inference.py"
 API_RUNS_DIR = PROJECT_ROOT / "runs" / "mamba_api"
 
@@ -21,6 +25,7 @@ app = FastAPI(title="AQI Mamba API")
 class TrainRequest(BaseModel):
     run_id: str = Field(..., description="Training dataset run id, e.g. daily_20260608")
     model_run_id: str | None = Field(None, description="Model artifact run id")
+    model_type: str = Field("mamba", description="Model type: mamba, lstm, or transformer")
     config: str = Field(str(CONFIG_PATH), description="Project YAML config path")
     keep_local: bool = Field(True, description="Keep checkpoint locally for follow-up inference")
 
@@ -60,13 +65,35 @@ def health() -> dict[str, str]:
 
 @app.post("/train")
 def train_model(req: TrainRequest) -> dict[str, Any]:
-    model_run_id = req.model_run_id or f"mamba_{req.run_id}"
+    model_type = req.model_type.lower().strip()
+    if model_type not in TRAIN_SCRIPTS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Unsupported model_type",
+                "model_type": req.model_type,
+                "supported": sorted(TRAIN_SCRIPTS),
+            },
+        )
+
+    train_script = TRAIN_SCRIPTS[model_type]
+    if not train_script.exists():
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "message": "Training script not found",
+                "model_type": model_type,
+                "script": str(train_script),
+            },
+        )
+
+    model_run_id = req.model_run_id or f"{model_type}_{req.run_id}"
     out_dir = API_RUNS_DIR / model_run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         "python3",
-        str(TRAIN_SCRIPT),
+        str(train_script),
         "--config",
         req.config,
         "--run-id",
@@ -84,8 +111,9 @@ def train_model(req: TrainRequest) -> dict[str, Any]:
         {
             "run_id": req.run_id,
             "model_run_id": model_run_id,
+            "model_type": model_type,
             "out_dir": str(out_dir),
-            "checkpoint": str(out_dir / "best_mamba_aqi.pt"),
+            "checkpoint": str(out_dir / f"best_{model_type}_aqi.pt"),
             "metadata": str(out_dir / "training_metadata.json"),
         }
     )
