@@ -177,8 +177,18 @@ def load_location_names() -> dict[str, str]:
 @st.cache_data(ttl=30)
 def list_prediction_objects() -> list[str]:
     client = get_client()
-    objects = client.list_objects(MINIO_ARTIFACTS_BUCKET, prefix=f"{PREDICTION_ROOT}/", recursive=True)
-    return sorted(obj.object_name for obj in objects if obj.object_name.endswith("future_predictions.csv"))
+    try:
+        if not client.bucket_exists(MINIO_ARTIFACTS_BUCKET):
+            client.make_bucket(MINIO_ARTIFACTS_BUCKET)
+    except Exception as exc:
+        print(f"  [WARN] Failed to check/create bucket '{MINIO_ARTIFACTS_BUCKET}': {exc}")
+        return []
+    try:
+        objects = client.list_objects(MINIO_ARTIFACTS_BUCKET, prefix=f"{PREDICTION_ROOT}/", recursive=True)
+        return sorted(obj.object_name for obj in objects if obj.object_name.endswith("future_predictions.csv"))
+    except Exception as exc:
+        print(f"  [WARN] Failed to list objects in '{MINIO_ARTIFACTS_BUCKET}': {exc}")
+        return []
 
 
 def parse_prediction_path(path: str) -> dict[str, str]:

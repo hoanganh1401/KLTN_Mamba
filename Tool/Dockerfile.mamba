@@ -1,3 +1,11 @@
+# Dockerfile for Mamba model inference.
+# Supports both GPU (with CUDA toolkit/fused kernels) and CPU-only VPS fallback.
+# For CPU-only deployment, build with:
+#   ENABLE_MAMBA_FASTPATH=0
+#   ENABLE_MAMBA_SSM=0
+#   BASE_IMAGE=ubuntu:22.04
+#   TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+
 ARG BASE_IMAGE=ubuntu:22.04
 FROM ${BASE_IMAGE}
 
