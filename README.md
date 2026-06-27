@@ -67,7 +67,28 @@ Chay backfill:
 python DataSet/data_scraper.py --mode backfill --start-date 2025-01-01 --end-date 2025-02-01 --locations DataSet/locations.jsonl
 ```
 
-## 5. Chay Streamlit app
+## 5. MLflow local de quan ly model
+
+MLflow chay doc lap voi Airflow va dung cho training tu terminal VS Code/local.
+
+Chay rieng MLflow:
+```bash
+docker compose -f Tool\docker-compose.yaml up -d mlflow
+```
+
+Mo UI:
+```text
+http://localhost:5000
+```
+
+Config training hien tro ve:
+```yaml
+mlflow_tracking_uri: http://localhost:5000
+```
+
+Sau khi train xong, model production van can duoc upload len MinIO artifacts bucket de server inference tai ve.
+
+## 6. Chay Streamlit app
 File app hien dang trong: [App/streamlit_app.py](App/streamlit_app.py). Ban co the them UI, sau do chay:
 ```bash
 python -m venv .venv
@@ -77,7 +98,7 @@ streamlit run App/streamlit_app.py
 ```
 Mo trinh duyet: http://localhost:8501
 
-## 6. Dung dich vu Docker
+## 7. Dung dich vu Docker
 ```bash
 docker compose down
 ```

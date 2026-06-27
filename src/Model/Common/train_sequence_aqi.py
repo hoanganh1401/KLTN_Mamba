@@ -211,8 +211,10 @@ def apply_config(args: argparse.Namespace) -> argparse.Namespace:
         args.dim_feedforward = int(dim_ff) if dim_ff is not None else None
     if not _cli_has(args, "--dropout"):
         args.dropout = float(_cfg_get(model_cfg, "dropout", default=args.dropout))
-    args.mlflow_experiment = str(training_cfg.get("mlflow_experiment", args.mlflow_experiment))
-    args.mlflow_tracking_uri = training_cfg.get("mlflow_tracking_uri", args.mlflow_tracking_uri)
+    if not _cli_has(args, "--mlflow-experiment"):
+        args.mlflow_experiment = str(training_cfg.get("mlflow_experiment", args.mlflow_experiment))
+    if not _cli_has(args, "--mlflow-tracking-uri"):
+        args.mlflow_tracking_uri = training_cfg.get("mlflow_tracking_uri", args.mlflow_tracking_uri)
     mlflow_enabled = _cfg_bool(
         _cfg_get(model_cfg, "mlflow_enabled", default=training_cfg.get("mlflow_enabled", True)),
         True,
