@@ -1,4 +1,4 @@
-"""
+﻿"""
 Manual Air Quality training DAG.
 
 Runs the offline training path on demand:

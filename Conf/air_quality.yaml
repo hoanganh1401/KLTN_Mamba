@@ -72,7 +72,7 @@ training:
   min_lr: 0.00001
   mlflow_enabled: true
   mlflow_experiment: AQI Forecasting
-  mlflow_tracking_uri: http://localhost:5000
+  mlflow_tracking_uri: http://mlflow:5000
 
 mamba:
   enabled: true
