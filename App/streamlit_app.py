@@ -174,6 +174,27 @@ def load_location_names() -> dict[str, str]:
     return names
 
 
+def load_location_coords() -> dict[str, tuple[float, float]]:
+    path = _REPO_ROOT / "DataSet" / "locations.jsonl"
+    coords: dict[str, tuple[float, float]] = {}
+    if not path.exists():
+        return coords
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            key = str(obj.get("location_key", "")).strip()
+            lat = obj.get("latitude")
+            lon = obj.get("longitude")
+            if key and lat is not None and lon is not None:
+                try:
+                    coords[key] = (float(lat), float(lon))
+                except (TypeError, ValueError):
+                    continue
+    return coords
+
+
 @st.cache_data(ttl=30)
 def list_prediction_objects() -> list[str]:
     client = get_client()
@@ -319,6 +340,82 @@ def render_aqi_legend() -> None:
         f"<div class='legend'>{''.join(items)}</div>",
         height=86,
     )
+
+
+def get_forecast_hour_options(clean: pd.DataFrame, limit: int = 12) -> list[pd.Timestamp]:
+    if clean.empty or "forecast_time" not in clean.columns:
+        return []
+    times = sorted(pd.Series(clean["forecast_time"].dropna().unique()))
+    return [pd.Timestamp(t) for t in times[:limit]]
+
+
+def build_hourly_snapshot(clean: pd.DataFrame, selected_time: pd.Timestamp) -> pd.DataFrame:
+    if clean.empty:
+        return clean
+    work = clean.copy()
+    work["_diff"] = (work["forecast_time"] - selected_time).abs()
+    idx = work.groupby("province")["_diff"].idxmin()
+    snapshot = work.loc[idx].drop(columns=["_diff"])
+    return snapshot.sort_values("y_pred", ascending=False)
+
+
+def render_aqi_map(
+    df: pd.DataFrame,
+    coords: dict[str, tuple[float, float]],
+    province_col: str,
+    value_col: str,
+    level_col: str,
+    color_col: str,
+    name_col: str,
+    title: str,
+    time_col: str | None = None,
+) -> None:
+    render_html(f"<div class='section-title'>{title}</div>")
+    if df.empty:
+        st.info("Chưa có dữ liệu để hiển thị trên bản đồ.")
+        return
+    if go is None:
+        st.info("Cần cài đặt thư viện plotly để hiển thị bản đồ AQI.")
+        return
+
+    map_df = df.copy()
+    map_df["lat"] = map_df[province_col].map(lambda p: coords.get(str(p), (None, None))[0])
+    map_df["lon"] = map_df[province_col].map(lambda p: coords.get(str(p), (None, None))[1])
+    map_df = map_df.dropna(subset=["lat", "lon", value_col])
+    if map_df.empty:
+        st.info("Không có toạ độ tỉnh/thành để hiển thị trên bản đồ.")
+        return
+
+    values = pd.to_numeric(map_df[value_col], errors="coerce").fillna(0)
+    sizes = (18 + values / 6).clip(lower=18, upper=48)
+    hover_extra = ""
+    custom_cols = [name_col, level_col]
+    if time_col and time_col in map_df.columns:
+        map_df["_time_label"] = map_df[time_col].apply(lambda v: format_time(v, "%d/%m %H:%M"))
+        custom_cols.append("_time_label")
+        hover_extra = "<br>Thời điểm: %{customdata[2]}"
+
+    fig = go.Figure(
+        go.Scattermap(
+            lat=map_df["lat"],
+            lon=map_df["lon"],
+            mode="markers+text",
+            marker=go.scattermap.Marker(size=sizes, color=map_df[color_col], opacity=0.9),
+            text=values.map(lambda v: f"{v:.0f}"),
+            textfont=dict(size=11, color="#0f172a"),
+            customdata=map_df[custom_cols].to_numpy(),
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>AQI: %{text}<br>Mức: %{customdata[1]}" + hover_extra + "<extra></extra>"
+            ),
+        )
+    )
+    fig.update_layout(
+        map=dict(style="open-street-map", zoom=4.3, center=dict(lat=16.2, lon=107.0)),
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=540,
+        showlegend=False,
+    )
+    st.plotly_chart(fig, width="stretch")
 
 
 def render_card(label: str, value: str, help_text: str) -> None:
@@ -598,7 +695,7 @@ def render_past_aqi(selected_province: str, location_names: dict[str, str], sele
             "level": "Mức AQI",
         },
     )
-def render_current_aqi(provinces: list[str], location_names: dict[str, str], selected_province: str) -> pd.DataFrame:
+def render_current_aqi(provinces: list[str], location_names: dict[str, str], selected_province: str, coords: dict[str, tuple[float, float]]) -> pd.DataFrame:
     target_time = pd.Timestamp(now_local()).floor("h")
     current = load_current_raw_aqi(tuple(provinces), target_time.isoformat())
     if current.empty:
@@ -627,6 +724,20 @@ def render_current_aqi(provinces: list[str], location_names: dict[str, str], sel
     with c4:
         render_card("Vượt ngưỡng 100", f"{alert_count}", "Tỉnh/thành cần lưu ý")
 
+    render_html("<div class='section-title'>Bảng màu AQI</div>")
+    render_aqi_legend()
+    render_aqi_map(
+        current,
+        coords,
+        province_col="province",
+        value_col="current_aqi",
+        level_col="current_level",
+        color_col="current_color",
+        name_col="province_name",
+        time_col="observed_time",
+        title="Bản đồ AQI hiện tại theo tỉnh/thành",
+    )
+
     left_col, right_col = st.columns([1.35, 1])
     with left_col:
         render_html("<div class='section-title'>AQI hiện tại theo tỉnh/thành</div>")
@@ -649,7 +760,7 @@ def render_current_aqi(provinces: list[str], location_names: dict[str, str], sel
 
     return current
 
-def render_overview(all_df: pd.DataFrame, location_names: dict[str, str]) -> pd.DataFrame:
+def render_overview(all_df: pd.DataFrame, location_names: dict[str, str], coords: dict[str, tuple[float, float]]) -> pd.DataFrame:
     clean = prepare_clean_predictions(all_df, location_names)
     if clean.empty:
         st.warning("Không tìm thấy dòng dự báo hợp lệ.")
@@ -671,6 +782,35 @@ def render_overview(all_df: pd.DataFrame, location_names: dict[str, str]) -> pd.
 
     render_html("<div class='section-title'>Bảng màu AQI</div>")
     render_aqi_legend()
+
+    hour_options = get_forecast_hour_options(clean, limit=12)
+    if hour_options:
+        select_col, _ = st.columns([1.1, 2])
+        with select_col:
+            selected_map_time = st.selectbox(
+                "Xem bản đồ dự đoán cho giờ",
+                hour_options,
+                format_func=lambda t: format_time(t, "%d/%m %H:%M"),
+                key="overview_map_hour",
+            )
+        map_snapshot = build_hourly_snapshot(clean, selected_map_time)
+        map_title = f"Bản đồ AQI dự đoán lúc {format_time(selected_map_time, '%d/%m %H:%M')}"
+    else:
+        map_snapshot = pd.DataFrame()
+        map_title = "Bản đồ AQI dự đoán theo tỉnh/thành"
+
+    render_aqi_map(
+        map_snapshot,
+        coords,
+        province_col="province",
+        value_col="y_pred",
+        level_col="level",
+        color_col="level_color",
+        name_col="province_name",
+        time_col="forecast_time",
+        title=map_title,
+    )
+
     chart_col, risk_col = st.columns([2.1, 1])
     with chart_col:
         render_overview_chart(clean, summary)
@@ -738,6 +878,7 @@ def main() -> None:
     paths = list_prediction_objects()
     rows = [parse_prediction_path(path) for path in paths]
     location_names = load_location_names()
+    location_coords = load_location_coords()
     provinces = sorted({r["province"] for r in rows if r["province"]})
     current_forecast_date = pd.Timestamp(now_local()).date().isoformat()
     all_latest_df = load_latest_predictions(rows, provinces, current_forecast_date) if provinces else pd.DataFrame()
@@ -775,9 +916,9 @@ def main() -> None:
 
     active_tab = st.radio("Điều hướng", PAGE_OPTIONS, horizontal=True, key="active_tab", label_visibility="collapsed")
     if active_tab == "AQI hiện tại":
-        render_current_aqi(provinces, location_names, selected_province)
+        render_current_aqi(provinces, location_names, selected_province, location_coords)
     elif active_tab == "Tổng Quan Dự Đoán":
-        render_overview(all_latest_df, location_names)
+        render_overview(all_latest_df, location_names, location_coords)
     elif active_tab == "Chi tiết tỉnh/thành":
         if selected_run_row is None:
             st.warning(f"Chưa có dữ liệu dự báo cho ngày hiện tại ({selected_date}) của {location_names.get(selected_province, selected_province)}.")
