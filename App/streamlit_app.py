@@ -18,6 +18,13 @@ try:
 except ModuleNotFoundError:  # Keep the dashboard usable in lightweight local envs.
     go = None
 
+try:
+    import folium
+    from streamlit_folium import st_folium
+except ModuleNotFoundError:  # Keep the dashboard usable if folium isn't installed yet.
+    folium = None
+    st_folium = None
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SRC_ROOT = _REPO_ROOT / "src"
 for _path in (str(_REPO_ROOT), str(_SRC_ROOT)):
@@ -31,6 +38,18 @@ from src.common.time_utils import now_local, parse_time_local
 PREDICTION_ROOT = "mamba_inference"
 MINIO_RAW_BUCKETS = list(dict.fromkeys([os.environ.get("MINIO_BUCKET", "air-quality"), "air-quality"]))
 PAGE_OPTIONS = ["AQI hiện tại", "Tổng Quan Dự Đoán", "Chi tiết tỉnh/thành", "AQI quá khứ"]
+
+# Quần đảo Hoàng Sa và Trường Sa là một phần lãnh thổ không thể tách rời của Việt Nam.
+# Các điểm này được ghim cố định trên bản đồ để khẳng định chủ quyền biển đảo.
+VN_SOVEREIGN_ISLANDS = [
+    {"name": "Quần đảo Hoàng Sa", "lat": 16.5, "lon": 112.0},
+    {"name": "Quần đảo Trường Sa", "lat": 8.9, "lon": 111.9},
+]
+
+# Che vùng nhãn "South China Sea / 南海" in sẵn trên tile nền bằng một khối màu
+# trùng với màu nền biển của bản đồ. Chỉnh lại toạ độ/màu nếu nhãn lệch vị trí.
+SEA_LABEL_MASK_BOUNDS = [[11.8, 112.3], [17.6, 117.8]]
+SEA_LABEL_MASK_COLOR = "#D4DADC"
 
 
 def open_past_aqi_tab() -> None:
@@ -374,8 +393,8 @@ def render_aqi_map(
     if df.empty:
         st.info("Chưa có dữ liệu để hiển thị trên bản đồ.")
         return
-    if go is None:
-        st.info("Cần cài đặt thư viện plotly để hiển thị bản đồ AQI.")
+    if folium is None or st_folium is None:
+        st.info("Cần cài đặt thư viện folium và streamlit-folium để hiển thị bản đồ AQI.")
         return
 
     map_df = df.copy()
@@ -386,36 +405,77 @@ def render_aqi_map(
         st.info("Không có toạ độ tỉnh/thành để hiển thị trên bản đồ.")
         return
 
-    values = pd.to_numeric(map_df[value_col], errors="coerce").fillna(0)
-    sizes = (18 + values / 6).clip(lower=18, upper=48)
-    hover_extra = ""
-    custom_cols = [name_col, level_col]
-    if time_col and time_col in map_df.columns:
-        map_df["_time_label"] = map_df[time_col].apply(lambda v: format_time(v, "%d/%m %H:%M"))
-        custom_cols.append("_time_label")
-        hover_extra = "<br>Thời điểm: %{customdata[2]}"
+    fmap = folium.Map(location=[16.2, 107.0], zoom_start=5, tiles="CartoDB positron", control_scale=True)
+    folium.Rectangle(
+        bounds=SEA_LABEL_MASK_BOUNDS,
+        color=SEA_LABEL_MASK_COLOR,
+        weight=0,
+        fill=True,
+        fill_color=SEA_LABEL_MASK_COLOR,
+        fill_opacity=1,
+        interactive=False,
+    ).add_to(fmap)
 
-    fig = go.Figure(
-        go.Scattermap(
-            lat=map_df["lat"],
-            lon=map_df["lon"],
-            mode="markers+text",
-            marker=go.scattermap.Marker(size=sizes, color=map_df[color_col], opacity=0.9),
-            text=values.map(lambda v: f"{v:.0f}"),
-            textfont=dict(size=11, color="#0f172a"),
-            customdata=map_df[custom_cols].to_numpy(),
-            hovertemplate=(
-                "<b>%{customdata[0]}</b><br>AQI: %{text}<br>Mức: %{customdata[1]}" + hover_extra + "<extra></extra>"
+    for _, row in map_df.iterrows():
+        value = float(pd.to_numeric(row[value_col], errors="coerce") or 0.0)
+        name = row[name_col]
+        level = row[level_col]
+        color = row[color_col]
+        tooltip_html = f"<b>{name}</b><br>AQI: {value:.0f}<br>Mức: {level}"
+        if time_col and time_col in map_df.columns and pd.notna(row[time_col]):
+            tooltip_html += f"<br>Thời điểm: {format_time(row[time_col], '%d/%m %H:%M')}"
+        radius = max(9, min(24, 9 + value / 12))
+        folium.CircleMarker(
+            location=[row["lat"], row["lon"]],
+            radius=radius,
+            color="#ffffff",
+            weight=1.4,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.88,
+            tooltip=folium.Tooltip(tooltip_html, sticky=True),
+        ).add_to(fmap)
+        folium.map.Marker(
+            location=[row["lat"], row["lon"]],
+            icon=folium.DivIcon(
+                html=(
+                    f'<div style="font-size:11px; font-weight:800; color:#0f172a; '
+                    f'text-align:center; width:40px; margin-left:-20px;">{value:.0f}</div>'
+                )
             ),
-        )
-    )
-    fig.update_layout(
-        map=dict(style="open-street-map", zoom=4.3, center=dict(lat=16.2, lon=107.0)),
-        margin=dict(l=0, r=0, t=0, b=0),
+        ).add_to(fmap)
+
+    for island in VN_SOVEREIGN_ISLANDS:
+        folium.Marker(
+            location=[island["lat"], island["lon"]],
+            tooltip=folium.Tooltip(f"<b>{island['name']}</b><br>Chủ quyền: Việt Nam", sticky=True),
+            icon=folium.DivIcon(
+                html=(
+                    '<div style="display:flex; flex-direction:column; align-items:center; line-height:1.15;">'
+                    '<div style="font-size:10px; font-weight:800; color:#B4BEC5; '
+                    'text-shadow:0 0 3px #ffffff, 0 0 3px #ffffff, 0 0 3px #ffffff; letter-spacing:.02em;">Việt Nam</div>'
+                    f'<div style="font-size:10px; font-weight:800; color:#B4BEC5; '
+                    f'text-shadow:0 0 3px #ffffff, 0 0 3px #ffffff, 0 0 3px #ffffff; margin-top:2px; '
+                    f'white-space:nowrap;">{island["name"]}</div>'
+                    "</div>"
+                ),
+                icon_anchor=(20, 6),
+            ),
+        ).add_to(fmap)
+
+    all_bounds = [[row["lat"], row["lon"]] for _, row in map_df.iterrows()] + [
+        [island["lat"], island["lon"]] for island in VN_SOVEREIGN_ISLANDS
+    ]
+    if all_bounds:
+        fmap.fit_bounds(all_bounds, padding=(20, 20))
+
+    st_folium(
+        fmap,
+        key=f"aqi_map_{title}",
+        use_container_width=True,
         height=540,
-        showlegend=False,
+        returned_objects=[],
     )
-    st.plotly_chart(fig, width="stretch")
 
 
 def render_card(label: str, value: str, help_text: str) -> None:

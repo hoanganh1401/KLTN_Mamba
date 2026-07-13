@@ -1,0 +1,3 @@
+﻿province_name,best_lstm_or_transformer,non_mamba_better,best_non_mamba_mae,mamba_mae,delta_mae_vs_mamba,aqi_std,diff_abs_p95,spike_rate,direction_change_rate,autocorr_24h,autocorr_168h
+TP. Cần Thơ,lstm,TRUE,0.172456041,0.176959798,-0.004503757,24.43983926,4,0.012628256,0.140131579,0.564133958,0.146421246
+TP. Đà Nẵng,transformer,TRUE,0.299723983,0.344587594,-0.044863611,54.31591577,30,0.102209945,0.139607032,0.81332556,0.42692466
